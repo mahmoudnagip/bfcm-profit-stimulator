@@ -1,458 +1,2651 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  AlertTriangle, 
-  CheckCircle2, 
-  DollarSign, 
-  ShoppingCart, 
-  Users, 
-  Percent, 
-  BarChart3, 
-  PieChart, 
-  RefreshCw, 
-  Download, 
-  Info, 
-  Sparkles, 
-  HelpCircle,
-  ChevronRight,
-  Layers,
+import {
+  RotateCcw,
+  Sun,
+  Moon,
+  Zap,
+  ChevronDown,
+  ChevronUp,
+  Sliders,
+  BarChart3,
+  Table2,
+  TrendingUp,
+  Edit3,
+  Plus,
+  Minus,
+  Info,
+  Sparkles,
+  CheckCircle2,
+  AlertTriangle,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Layers,
+  DollarSign,
+  Target,
+  Activity
 } from 'lucide-react';
 
+/**
+ * Formatting Helpers
+ */
+function fmtCurrency(val, decimals = 0) {
+  const num = Number(val) || 0;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  }).format(num);
+}
+
+function fmtDeltaCurrency(val, decimals = 0) {
+  const num = Number(val) || 0;
+  const formatted = fmtCurrency(Math.abs(num), decimals);
+  if (Math.abs(num) < 0.005) return formatted;
+  return `${num > 0 ? '+' : '-'}${formatted}`;
+}
+
+function fmtPercent(val, decimals = 1) {
+  const num = Number(val) || 0;
+  return `${num.toFixed(decimals)}%`;
+}
+
+function fmtNumber(val) {
+  const num = Number(val) || 0;
+  return new Intl.NumberFormat('en-US').format(Math.round(num));
+}
+
+function fmtRatio(val) {
+  const num = Number(val) || 0;
+  return `${num.toFixed(2)}x`;
+}
+
+/**
+ * Standard Baseline Benchmarks (Default Cursor Positions)
+ */
+const DEFAULT_BASELINE = {
+  periodLabel: '2026-09 (Standard)',
+  newCustomers: 3500,
+  cpm: 32.0,
+  ctr: 2.4,
+  cvr: 2.48,
+  newUnitsPerOrder: 2.1,
+  newAvgRetailPrice: 40.0,
+  newDiscountRate: 10.0,
+  newShippingPerOrder: 4.2,
+  newRefundRate: 4.5,
+  returningOrders: 3920,
+  retUnitsPerOrder: 2.0,
+  retAvgRetailPrice: 41.0,
+  retDiscountRate: 8.0,
+  retShippingPerOrder: 3.06,
+  retRefundRate: 3.2,
+  unitCogs: 14.5,
+  fulfillmentPerOrder: 7.8,
+  paymentFeeRate: 2.9,
+  fixedOpex: 80000
+};
+
+/**
+ * Realistic Min (0) to Max Slider Configurations
+ */
+const SLIDER_RANGES = {
+  newCustomers: { min: 0, max: 15000, step: 50, minLabel: '0', maxLabel: '15,000' },
+  nCac: { min: 0, max: 250, step: 0.5, minLabel: '$0', maxLabel: '$250' },
+  cpm: { min: 0, max: 200, step: 0.5, minLabel: '$0', maxLabel: '$200' },
+  ctr: { min: 0, max: 15, step: 0.05, minLabel: '0%', maxLabel: '15%' },
+  cvr: { min: 0, max: 20, step: 0.05, minLabel: '0%', maxLabel: '20%' },
+  newAov: { min: 0, max: 500, step: 1, minLabel: '$0', maxLabel: '$500' },
+  newUnitsPerOrder: { min: 0, max: 10, step: 0.1, minLabel: '0', maxLabel: '10' },
+  newAvgRetailPrice: { min: 0, max: 250, step: 0.5, minLabel: '$0', maxLabel: '$250' },
+  newDiscountRate: { min: 0, max: 80, step: 0.5, minLabel: '0%', maxLabel: '80%' },
+  newShippingPerOrder: { min: 0, max: 40, step: 0.25, minLabel: '$0', maxLabel: '$40' },
+  newRefundRate: { min: 0, max: 50, step: 0.25, minLabel: '0%', maxLabel: '50%' },
+  returningOrders: { min: 0, max: 15000, step: 50, minLabel: '0', maxLabel: '15,000' },
+  retAov: { min: 0, max: 500, step: 1, minLabel: '$0', maxLabel: '$500' },
+  retUnitsPerOrder: { min: 0, max: 10, step: 0.1, minLabel: '0', maxLabel: '10' },
+  retAvgRetailPrice: { min: 0, max: 250, step: 0.5, minLabel: '$0', maxLabel: '$250' },
+  retDiscountRate: { min: 0, max: 80, step: 0.5, minLabel: '0%', maxLabel: '80%' },
+  retShippingPerOrder: { min: 0, max: 40, step: 0.25, minLabel: '$0', maxLabel: '$40' },
+  retRefundRate: { min: 0, max: 50, step: 0.25, minLabel: '0%', maxLabel: '50%' },
+  unitCogs: { min: 0, max: 150, step: 0.25, minLabel: '$0', maxLabel: '$150' },
+  fulfillmentPerOrder: { min: 0, max: 50, step: 0.25, minLabel: '$0', maxLabel: '$50' },
+  paymentFeeRate: { min: 0, max: 15, step: 0.1, minLabel: '0%', maxLabel: '15%' },
+  fixedOpex: { min: 0, max: 300000, step: 1000, minLabel: '$0', maxLabel: '$300k' }
+};
+
+/**
+ * Semi-Circular Net Profit Impact Speedometer Gauge
+ */
+function NetProfitGauge({ deltaProfit, scaleMax = 150000, isDark }) {
+  const clamped = Math.max(-scaleMax, Math.min(scaleMax, deltaProfit));
+  const ratio = clamped / scaleMax; // -1 to +1
+  // Angle from -90 deg (left, -100%) to +90 deg (right, +100%)
+  const angleDeg = ratio * 90;
+
+  const isPositive = deltaProfit > 0.5;
+  const isNegative = deltaProfit < -0.5;
+  const statusColor = isPositive ? '#10b981' : isNegative ? '#ef4444' : '#00aaff';
+
+  return (
+    <div className="flex flex-col items-center justify-between h-full">
+      <div className="w-full flex items-center justify-between mb-1">
+        <span className="text-[11px] font-bold uppercase tracking-wider opacity-75">
+          NET PROFIT IMPACT
+        </span>
+        <span
+          className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full"
+          style={{
+            backgroundColor: isPositive
+              ? 'rgba(16, 185, 129, 0.15)'
+              : isNegative
+              ? 'rgba(239, 68, 68, 0.15)'
+              : 'rgba(0, 170, 255, 0.15)',
+            color: statusColor
+          }}
+        >
+          {isPositive ? 'Profit Gain' : isNegative ? 'Profit Erosion' : 'Baseline'}
+        </span>
+      </div>
+
+      {/* SVG Gauge */}
+      <div className="relative w-full max-w-[230px] my-1">
+        <svg viewBox="0 0 220 125" className="w-full h-auto overflow-visible">
+          <defs>
+            <linearGradient id="needleGaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#ef4444" />
+              <stop offset="50%" stopColor="#00aaff" />
+              <stop offset="100%" stopColor="#10b981" />
+            </linearGradient>
+          </defs>
+
+          {/* Background Track Arc */}
+          <path
+            d="M 20 105 A 90 90 0 0 1 200 105"
+            fill="none"
+            stroke={isDark ? '#032030' : '#e2e8f0'}
+            strokeWidth="16"
+            strokeLinecap="round"
+          />
+
+          {/* Active Colored Gradient Arc */}
+          <path
+            d="M 20 105 A 90 90 0 0 1 200 105"
+            fill="none"
+            stroke="url(#needleGaugeGrad)"
+            strokeWidth="10"
+            strokeLinecap="round"
+            opacity="0.9"
+          />
+
+          {/* Center 0 Tick */}
+          <line
+            x1="110"
+            y1="10"
+            x2="110"
+            y2="24"
+            stroke={isDark ? '#94a3b8' : '#475569'}
+            strokeWidth="2"
+          />
+
+          {/* Animated Needle */}
+          <g
+            style={{
+              transform: `rotate(${angleDeg}deg)`,
+              transformOrigin: '110px 105px',
+              transition: 'transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)'
+            }}
+          >
+            <polygon
+              points="107,105 113,105 110,26"
+              fill={statusColor}
+            />
+            <circle cx="110" cy="105" r="8" fill={isDark ? '#FFFFFF' : '#0f172a'} />
+            <circle cx="110" cy="105" r="4" fill={statusColor} />
+          </g>
+
+          {/* Min / Zero / Max Labels */}
+          <text
+            x="16"
+            y="122"
+            fontSize="9"
+            fontFamily="monospace"
+            fill={isDark ? '#94a3b8' : '#64748b'}
+            textAnchor="start"
+          >
+            -{fmtCurrency(scaleMax / 1000)}k
+          </text>
+          <text
+            x="110"
+            y="122"
+            fontSize="9"
+            fontFamily="monospace"
+            fill={isDark ? '#94a3b8' : '#64748b'}
+            textAnchor="middle"
+          >
+            $0
+          </text>
+          <text
+            x="204"
+            y="122"
+            fontSize="9"
+            fontFamily="monospace"
+            fill={isDark ? '#94a3b8' : '#64748b'}
+            textAnchor="end"
+          >
+            +{fmtCurrency(scaleMax / 1000)}k
+          </text>
+        </svg>
+      </div>
+
+      {/* Center Digital Delta Readout */}
+      <div className="text-center mt-0.5">
+        <div
+          className="text-xl sm:text-2xl font-extrabold font-mono tracking-tight"
+          style={{ color: statusColor }}
+        >
+          {Math.abs(deltaProfit) < 0.5 ? '$0' : fmtDeltaCurrency(deltaProfit)}
+        </div>
+        <div className="text-[11px] opacity-65">vs. Standard Net Profit</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Helper to derive nCAC cleanly from CPM, CTR, and CVR
+ */
+function computeNCacFromFunnel(cpm, ctr, cvr) {
+  const safeCtr = Math.max(0.01, ctr) / 100;
+  const safeCvr = Math.max(0.01, cvr) / 100;
+  const cpc = cpm / (1000 * safeCtr);
+  return cpc / safeCvr;
+}
+
+/**
+ * Build initial absolute scenario state directly from baseline benchmarks
+ */
+function buildInitialScenario(base) {
+  return {
+    newCustomers: base.newCustomers,
+    cpm: base.cpm,
+    ctr: base.ctr,
+    cvr: base.cvr,
+    nCacOverride: null, // null means dynamically calculated from CPM / CTR / CVR
+    newUnitsPerOrder: base.newUnitsPerOrder,
+    newAvgRetailPrice: base.newAvgRetailPrice,
+    newDiscountRate: base.newDiscountRate,
+    newShippingPerOrder: base.newShippingPerOrder,
+    newRefundRate: base.newRefundRate,
+    returningOrders: base.returningOrders,
+    retUnitsPerOrder: base.retUnitsPerOrder,
+    retAvgRetailPrice: base.retAvgRetailPrice,
+    retDiscountRate: base.retDiscountRate,
+    retShippingPerOrder: base.retShippingPerOrder,
+    retRefundRate: base.retRefundRate,
+    unitCogs: base.unitCogs,
+    fulfillmentPerOrder: base.fulfillmentPerOrder,
+    paymentFeeRate: base.paymentFeeRate,
+    fixedOpex: base.fixedOpex
+  };
+}
+
+/**
+ * Core Financial Calculation Engine
+ * Operates directly on absolute metric values (0 to Max) for full transparency and realism.
+ */
+function calculateScenario(scen) {
+  const newCustomers = Math.max(0, scen.newCustomers);
+  const cpm = Math.max(0, scen.cpm);
+  const ctr = Math.max(0, scen.ctr);
+  const cvr = Math.max(0, scen.cvr);
+
+  // 1. Acquisition Funnel & nCAC
+  const funnelNCac =
+    ctr > 0 && cvr > 0 ? computeNCacFromFunnel(cpm, ctr, cvr) : cpm > 0 ? 250 : 0;
+  const nCac = scen.nCacOverride !== null ? Math.max(0, scen.nCacOverride) : funnelNCac;
+  const cpc = ctr > 0 ? cpm / (1000 * (ctr / 100)) : 0;
+  const clicks = cvr > 0 ? newCustomers / (cvr / 100) : 0;
+  const impressions = ctr > 0 ? clicks / (ctr / 100) : 0;
+  const adSpend = newCustomers * nCac;
+
+  // 2. New Customer Revenue & AOV
+  const newUnitsPerOrder = Math.max(0, scen.newUnitsPerOrder);
+  const newUnits = newCustomers * newUnitsPerOrder;
+  const newAvgRetailPrice = Math.max(0, scen.newAvgRetailPrice);
+  const newGrossSales = newUnits * newAvgRetailPrice;
+
+  const newDiscountRate = Math.max(0, Math.min(100, scen.newDiscountRate));
+  const newDiscounts = newGrossSales * (newDiscountRate / 100);
+
+  const newShippingPerOrder = Math.max(0, scen.newShippingPerOrder);
+  const newShippingTotal = newCustomers * newShippingPerOrder;
+
+  const newNetSalesBeforeRefunds = newGrossSales - newDiscounts + newShippingTotal;
+  const newAov = newCustomers > 0 ? newNetSalesBeforeRefunds / newCustomers : 0;
+
+  const newRefundRate = Math.max(0, Math.min(100, scen.newRefundRate));
+  const newRefunds = newNetSalesBeforeRefunds * (newRefundRate / 100);
+  const newNetRevenue = newNetSalesBeforeRefunds - newRefunds;
+
+  // 3. Returning Customer Revenue & AOV
+  const returningOrders = Math.max(0, scen.returningOrders);
+  const retUnitsPerOrder = Math.max(0, scen.retUnitsPerOrder);
+  const retUnits = returningOrders * retUnitsPerOrder;
+  const retAvgRetailPrice = Math.max(0, scen.retAvgRetailPrice);
+  const retGrossSales = retUnits * retAvgRetailPrice;
+
+  const retDiscountRate = Math.max(0, Math.min(100, scen.retDiscountRate));
+  const retDiscounts = retGrossSales * (retDiscountRate / 100);
+
+  const retShippingPerOrder = Math.max(0, scen.retShippingPerOrder);
+  const retShippingTotal = returningOrders * retShippingPerOrder;
+
+  const retNetSalesBeforeRefunds = retGrossSales - retDiscounts + retShippingTotal;
+  const retAov = returningOrders > 0 ? retNetSalesBeforeRefunds / returningOrders : 0;
+
+  const retRefundRate = Math.max(0, Math.min(100, scen.retRefundRate));
+  const retRefunds = retNetSalesBeforeRefunds * (retRefundRate / 100);
+  const retNetRevenue = retNetSalesBeforeRefunds - retRefunds;
+
+  // 4. Consolidated Top Line
+  const totalOrders = newCustomers + returningOrders;
+  const totalUnits = newUnits + retUnits;
+  const totalGrossSales = newGrossSales + retGrossSales;
+  const totalDiscounts = newDiscounts + retDiscounts;
+  const totalShipping = newShippingTotal + retShippingTotal;
+  const totalRefunds = newRefunds + retRefunds;
+  const netRevenue = newNetRevenue + retNetRevenue;
+
+  // 5. Variable Ops Costs (COGS per unit, Fulfillment per order, Payment Processing %)
+  const unitCogs = Math.max(0, scen.unitCogs);
+  const totalCogs = totalUnits * unitCogs;
+
+  const fulfillmentPerOrder = Math.max(0, scen.fulfillmentPerOrder);
+  const totalFulfillment = totalOrders * fulfillmentPerOrder;
+
+  const paymentFeeRate = Math.max(0, scen.paymentFeeRate);
+  const totalPaymentFees = netRevenue * (paymentFeeRate / 100);
+
+  const totalVariableOps = totalCogs + totalFulfillment + totalPaymentFees;
+  const grossProfit = netRevenue - totalVariableOps;
+  const grossMarginPct = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
+
+  // 6. Contribution & Bottom-Line Net Profit
+  const contribution = grossProfit - adSpend;
+  const contributionMarginPct = netRevenue > 0 ? (contribution / netRevenue) * 100 : 0;
+  const fixedOpex = Math.max(0, scen.fixedOpex);
+  const netProfit = contribution - fixedOpex;
+  const netMarginPct = netRevenue > 0 ? (netProfit / netRevenue) * 100 : 0;
+
+  // 7. Efficiency & Unit Economics Ratios
+  const firstOrderMer = adSpend > 0 ? newNetRevenue / adSpend : 0;
+  const blendedMer = adSpend > 0 ? netRevenue / adSpend : 0;
+
+  const newOrderOpsCost =
+    newUnits * unitCogs +
+    newCustomers * fulfillmentPerOrder +
+    newNetRevenue * (paymentFeeRate / 100);
+  const firstOrderGrossProfit = newNetRevenue - newOrderOpsCost;
+  const firstOrderContributionPerCust = newCustomers > 0 ? firstOrderGrossProfit / newCustomers : 0;
+  // 12-month cohort repeat contribution multiplier (~1.72x 1st-order contribution)
+  const ltvCac = nCac > 0 ? (firstOrderContributionPerCust * 1.72) / nCac : 0;
+
+  return {
+    newCustomers,
+    cpm,
+    ctr,
+    cvr,
+    cpc,
+    clicks,
+    impressions,
+    nCac,
+    adSpend,
+    newUnitsPerOrder,
+    newUnits,
+    newAvgRetailPrice,
+    newGrossSales,
+    newDiscountRate,
+    newDiscounts,
+    newShippingPerOrder,
+    newShippingTotal,
+    newRefundRate,
+    newRefunds,
+    newNetRevenue,
+    newAov,
+    returningOrders,
+    retUnitsPerOrder,
+    retUnits,
+    retAvgRetailPrice,
+    retGrossSales,
+    retDiscountRate,
+    retDiscounts,
+    retShippingPerOrder,
+    retShippingTotal,
+    retRefundRate,
+    retRefunds,
+    retNetRevenue,
+    retAov,
+    totalOrders,
+    totalUnits,
+    totalGrossSales,
+    totalDiscounts,
+    totalShipping,
+    totalRefunds,
+    netRevenue,
+    unitCogs,
+    totalCogs,
+    fulfillmentPerOrder,
+    totalFulfillment,
+    paymentFeeRate,
+    totalPaymentFees,
+    totalVariableOps,
+    grossProfit,
+    grossMarginPct,
+    contribution,
+    contributionMarginPct,
+    fixedOpex,
+    netProfit,
+    netMarginPct,
+    firstOrderMer,
+    blendedMer,
+    ltvCac
+  };
+}
+
+/**
+ * Enhanced Absolute-Range Scenario Slider Control
+ * - Starts at 0 up to realistic max
+ * - Displays vertical baseline marker tick on track so user sees standard benchmark
+ * - Supports direct numeric input typing + smooth slider drag + +/- step buttons
+ */
+function LeverSlider({
+  label,
+  value,
+  baseValue,
+  min = 0,
+  max = 100,
+  step = 1,
+  minLabel,
+  maxLabel,
+  formatValue,
+  onChange,
+  isDark,
+  accentColor = '#00aaff',
+  badgeNote = null,
+  inverseGood = false,
+  disabled = false
+}) {
+  const diff = value - baseValue;
+  const pctChange = baseValue > 0 ? (diff / baseValue) * 100 : value > 0 ? 100 : 0;
+  const isChanged = Math.abs(diff) > step * 0.1;
+  const isPositiveChange = inverseGood ? diff < 0 : diff > 0;
+
+  // Position of the standard baseline tick mark along the track (0% to 100%)
+  const baselineMarkerPct = Math.max(0, Math.min(100, ((baseValue - min) / (max - min)) * 100));
+
+  const pctBadgeColor = !isChanged
+    ? isDark
+      ? 'bg-[#032030] text-slate-300 border-[#00aaff]/30'
+      : 'bg-slate-100 text-slate-600 border-slate-300'
+    : isPositiveChange
+    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40'
+    : 'bg-rose-500/15 text-rose-400 border-rose-500/40';
+
+  const handleStep = (direction) => {
+    if (disabled) return;
+    const raw = value + direction * step;
+    const decimals = step < 0.1 ? 2 : step < 1 ? 1 : 0;
+    const rounded = Number(raw.toFixed(decimals));
+    onChange(Math.max(min, Math.min(max, rounded)));
+  };
+
+  const handleDirectInput = (e) => {
+    const parsed = parseFloat(e.target.value);
+    if (isNaN(parsed)) {
+      onChange(min);
+      return;
+    }
+    onChange(Math.max(min, Math.min(max, parsed)));
+  };
+
+  return (
+    <div
+      className={`p-3 rounded-xl border transition-all ${disabled ? 'opacity-65' : ''}`}
+      style={{
+        backgroundColor: isDark ? '#032030' : '#f8fafc',
+        borderColor: isChanged
+          ? 'rgba(0, 170, 255, 0.55)'
+          : isDark
+          ? 'rgba(0, 170, 255, 0.16)'
+          : '#e2e8f0'
+      }}
+    >
+      {/* Top Row: Metric Name + Standard Benchmark vs Direct Editable Value + Delta Pill */}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <div>
+          <div className="text-xs font-semibold flex items-center gap-1.5 flex-wrap">
+            <span>{label}</span>
+            {badgeNote && (
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#00aaff]/15 text-[#00aaff] font-medium">
+                {badgeNote}
+              </span>
+            )}
+          </div>
+          <div className="text-[11px] opacity-65 font-mono mt-0.5 flex items-center gap-1.5">
+            <span>Std: {formatValue(baseValue)}</span>
+            {isChanged && (
+              <button
+                type="button"
+                onClick={() => onChange(baseValue)}
+                className="text-[10px] underline text-[#00aaff] hover:opacity-80"
+                title="Reset this metric to Standard"
+              >
+                reset
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="text-right flex flex-col items-end">
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min={min}
+              max={max}
+              step={step}
+              disabled={disabled}
+              value={Number(value.toFixed(step < 0.1 ? 2 : step < 1 ? 1 : 0))}
+              onChange={handleDirectInput}
+              aria-label={`${label} numeric input`}
+              className="w-20 text-right text-xs font-extrabold font-mono px-2 py-0.5 rounded border focus:outline-none focus:border-[#00aaff]"
+              style={{
+                backgroundColor: isDark ? '#111828' : '#ffffff',
+                borderColor: isChanged ? '#00aaff' : isDark ? '#1e293b' : '#cbd5e1',
+                color: isChanged ? '#00aaff' : undefined
+              }}
+            />
+          </div>
+          <span
+            className={`inline-block text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded border mt-1 ${pctBadgeColor}`}
+          >
+            {!isChanged
+              ? 'Standard'
+              : `${pctChange > 0 ? '+' : ''}${pctChange.toFixed(1)}%`}
+          </span>
+        </div>
+      </div>
+
+      {/* Slider Track Row with - and + step buttons + Baseline Benchmark Tick */}
+      <div className="flex items-center gap-2 mt-2">
+        <button
+          type="button"
+          onClick={() => handleStep(-1)}
+          disabled={disabled || value <= min}
+          aria-label={`Decrease ${label}`}
+          className="w-6 h-6 rounded-md flex items-center justify-center border text-xs font-bold transition hover:border-[#00aaff] hover:text-[#00aaff] disabled:opacity-35 shrink-0"
+          style={{
+            backgroundColor: isDark ? '#111828' : '#ffffff',
+            borderColor: isDark ? '#1e293b' : '#cbd5e1'
+          }}
+        >
+          <Minus className="w-3 h-3" />
+        </button>
+
+        <div className="relative w-full flex items-center">
+          {/* Standard Baseline Tick Marker */}
+          <div
+            title={`Standard Benchmark: ${formatValue(baseValue)}`}
+            className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3.5 pointer-events-none z-10 rounded-full"
+            style={{
+              left: `${baselineMarkerPct}%`,
+              backgroundColor: isDark ? '#FFFFFF' : '#0f172a',
+              opacity: 0.65
+            }}
+          />
+
+          <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={Math.min(max, Math.max(min, value))}
+            disabled={disabled}
+            onChange={(e) => onChange(parseFloat(e.target.value))}
+            className="w-full h-1.5 rounded-lg appearance-none cursor-pointer relative z-20 bg-transparent"
+            style={{
+              accentColor: accentColor,
+              background: isDark ? '#111828' : '#cbd5e1'
+            }}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => handleStep(1)}
+          disabled={disabled || value >= max}
+          aria-label={`Increase ${label}`}
+          className="w-6 h-6 rounded-md flex items-center justify-center border text-xs font-bold transition hover:border-[#00aaff] hover:text-[#00aaff] disabled:opacity-35 shrink-0"
+          style={{
+            backgroundColor: isDark ? '#111828' : '#ffffff',
+            borderColor: isDark ? '#1e293b' : '#cbd5e1'
+          }}
+        >
+          <Plus className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* Min / Standard / Max Scale Footer */}
+      <div className="flex items-center justify-between text-[10px] font-mono opacity-55 mt-1 px-8">
+        <span>{minLabel}</span>
+        <span>Std: {formatValue(baseValue)}</span>
+        <span>{maxLabel}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  // ---------------------------------------------------------------------------
-  // BASELINE STATE
-  // ---------------------------------------------------------------------------
-  const [baseline, setBaseline] = useState({
-    monthlyRevenue: 100000,     // $ Gross Sales
-    aov: 80,                    // $ Average Order Value
-    adSpend: 25000,             // $ Ad Spend
-    cogsPct: 30,                // % Cost of Goods Sold
-    fulfillmentPct: 10,         // % Shipping & Handling
-    cpm: 15,                    // $ Cost Per Mille
-    ctr: 1.5,                   // % Click Through Rate
-    cvr: 2.5,                   // % Conversion Rate
-    repeatRatePct: 25,          // % Repeat Customer Contribution
-  });
+  const [isDark, setIsDark] = useState(true);
+  const [activeTab, setActiveTab] = useState('sliders'); // 'sliders' | 'ranking' | 'scorecard' | 'forecast' | 'edit'
+  const [baseline, setBaseline] = useState(DEFAULT_BASELINE);
+  const [scenario, setScenario] = useState(() => buildInitialScenario(DEFAULT_BASELINE));
 
-  // ---------------------------------------------------------------------------
-  // SIMULATION SCENARIO LEVERS (SLIDERS)
-  // ---------------------------------------------------------------------------
-  const [scenarios, setScenarios] = useState({
-    adSpendIncreasePct: 50,      // % Increase in Ad Budget
-    cpmSurgePct: 20,             // % CPM Inflation during Black Friday
-    ctrChangePct: 10,            // % CTR Improvement/Decline
-    cvrChangePct: 25,            // % CVR Increase due to massive offer
-    repeatUpliftPct: 30,         // % Increase in Repeat Buyer Traffic
-    fulfillmentSurgePct: 15,     // % Extra Shipping/Fuel Surcharges
-    discountNewPct: 25,          // % Discount for New Customers
-    discountRepeatPct: 20,       // % Discount for Repeat Customers
-  });
+  // Collapsible sub-sections state (Funnel sub-levers open by default for immediate CPM/CTR/CVR control)
+  const [showFunnelSub, setShowFunnelSub] = useState(true);
+  const [showNewAovSub, setShowNewAovSub] = useState(true);
+  const [showNewUnitsSub, setShowNewUnitsSub] = useState(true);
+  const [showRetAovSub, setShowRetAovSub] = useState(true);
+  const [showRetUnitsSub, setShowRetUnitsSub] = useState(true);
+  const [showMarginDetails, setShowMarginDetails] = useState(false);
 
-  // Active Tab
-  const [activeTab, setActiveTab] = useState('simulator'); // 'simulator' | 'abc_strategy' | 'report'
+  // Update a single metric value in the scenario
+  const updateMetric = (key, val) => {
+    setScenario((prev) => {
+      const updated = { ...prev, [key]: val };
+      // If user adjusts CPM, CTR, or CVR, clear direct nCAC override so funnel drives nCAC live
+      if (key === 'cpm' || key === 'ctr' || key === 'cvr') {
+        updated.nCacOverride = null;
+      }
+      return updated;
+    });
+  };
 
-  // Presets
-  const applyPreset = (type) => {
-    if (type === 'conservative') {
-      setScenarios({
-        adSpendIncreasePct: 25,
-        cpmSurgePct: 15,
-        ctrChangePct: 5,
-        cvrChangePct: 15,
-        repeatUpliftPct: 20,
-        fulfillmentSurgePct: 10,
-        discountNewPct: 15,
-        discountRepeatPct: 10,
+  // Update AOV directly by scaling Avg Retail Price proportionally so all AOV math stays exact
+  const handleDirectAovChange = (segment, targetAov) => {
+    setScenario((prev) => {
+      if (segment === 'new') {
+        const denom = prev.newUnitsPerOrder * (1 - prev.newDiscountRate / 100);
+        const impliedPrice =
+          denom > 0.01 ? Math.max(0, (targetAov - prev.newShippingPerOrder) / denom) : targetAov;
+        return { ...prev, newAvgRetailPrice: Number(impliedPrice.toFixed(2)) };
+      } else {
+        const denom = prev.retUnitsPerOrder * (1 - prev.retDiscountRate / 100);
+        const impliedPrice =
+          denom > 0.01 ? Math.max(0, (targetAov - prev.retShippingPerOrder) / denom) : targetAov;
+        return { ...prev, retAvgRetailPrice: Number(impliedPrice.toFixed(2)) };
+      }
+    });
+  };
+
+  // Reset all sliders to Standard Baseline values
+  const resetAll = () => {
+    setScenario(buildInitialScenario(baseline));
+  };
+
+  // Preset Scenarios adapted to realistic 0-to-Max ranges
+  const applyPreset = (presetName) => {
+    const baseScen = buildInitialScenario(baseline);
+    if (presetName === 'reset') {
+      setScenario(baseScen);
+    } else if (presetName === 'black_friday_trap') {
+      // Aggressive 25% sitewide discount + CPM spike to $52 + 5,250 new customers
+      setScenario({
+        ...baseScen,
+        newCustomers: 5250,
+        cpm: 52.0,
+        newDiscountRate: 25.0,
+        retDiscountRate: 25.0
       });
-    } else if (type === 'aggressive') {
-      setScenarios({
-        adSpendIncreasePct: 100,
-        cpmSurgePct: 40,
-        ctrChangePct: 20,
-        cvrChangePct: 50,
-        repeatUpliftPct: 60,
-        fulfillmentSurgePct: 25,
-        discountNewPct: 35,
-        discountRepeatPct: 30,
+    } else if (presetName === 'smart_offer') {
+      // Smart Bundle & CRO: CVR improves from 2.48% to 3.10%, AOV price +$8, 4,400 new customers
+      setScenario({
+        ...baseScen,
+        newCustomers: 4400,
+        cvr: 3.1,
+        newAvgRetailPrice: baseline.newAvgRetailPrice + 8,
+        returningOrders: 4500,
+        retAvgRetailPrice: baseline.retAvgRetailPrice + 6
       });
-    } else if (type === 'danger_zone') {
-      setScenarios({
-        adSpendIncreasePct: 150,
-        cpmSurgePct: 60,
-        ctrChangePct: 0,
-        cvrChangePct: 20,
-        repeatUpliftPct: 15,
-        fulfillmentSurgePct: 30,
-        discountNewPct: 45,
-        discountRepeatPct: 40,
+    } else if (presetName === 'cpm_spike') {
+      // Ad Auction Inflation: CPM rises from $32 to $65 while CTR/CVR stay flat
+      setScenario({
+        ...baseScen,
+        cpm: 65.0
       });
     }
   };
 
-  const handleReset = () => {
-    setBaseline({
-      monthlyRevenue: 100000,
-      aov: 80,
-      adSpend: 25000,
-      cogsPct: 30,
-      fulfillmentPct: 10,
-      cpm: 15,
-      ctr: 1.5,
-      cvr: 2.5,
-      repeatRatePct: 25,
-    });
-    setScenarios({
-      adSpendIncreasePct: 50,
-      cpmSurgePct: 20,
-      ctrChangePct: 10,
-      cvrChangePct: 25,
-      repeatUpliftPct: 30,
-      fulfillmentSurgePct: 15,
-      discountNewPct: 25,
-      discountRepeatPct: 20,
-    });
-  };
+  // Baseline & Current Scenario Calculations
+  const baseMetrics = useMemo(
+    () => calculateScenario(buildInitialScenario(baseline)),
+    [baseline]
+  );
 
-  // ---------------------------------------------------------------------------
-  // REAL-TIME ENGINE CALCULATIONS
-  // ---------------------------------------------------------------------------
-  const metrics = useMemo(() => {
-    // 1. BASELINE CALCULATIONS
-    const baseTotalOrders = baseline.monthlyRevenue / (baseline.aov || 1);
-    const baseRepeatOrders = baseTotalOrders * (baseline.repeatRatePct / 100);
-    const baseNewOrders = baseTotalOrders - baseRepeatOrders;
-    
-    const baseGrossRev = baseline.monthlyRevenue;
-    const baseDiscounts = 0; // Baseline assumes regular pricing
-    const baseNetRev = baseGrossRev - baseDiscounts;
-    
-    const baseCOGS = baseNetRev * (baseline.cogsPct / 100);
-    const baseFulfillment = baseNetRev * (baseline.fulfillmentPct / 100);
-    const baseAdSpend = baseline.adSpend;
-    
-    const baseTotalCosts = baseCOGS + baseFulfillment + baseAdSpend;
-    const baseNetProfit = baseNetRev - baseTotalCosts;
-    const baseProfitMargin = baseNetRev > 0 ? (baseNetProfit / baseNetRev) * 100 : 0;
-    const baseROAS = baseAdSpend > 0 ? baseNetRev / baseAdSpend : 0;
-    const baseNCAC = baseNewOrders > 0 ? baseAdSpend / baseNewOrders : 0;
+  const currentMetrics = useMemo(() => calculateScenario(scenario), [scenario]);
 
-    // 2. SIMULATED SCENARIO CALCULATIONS
-    // Ad Budget & Inflation
-    const simAdSpend = baseAdSpend * (1 + scenarios.adSpendIncreasePct / 100);
-    const simCPM = baseline.cpm * (1 + scenarios.cpmSurgePct / 100);
-    
-    // Traffic Efficiency
-    const baseImpressions = baseAdSpend > 0 ? (baseAdSpend / baseline.cpm) * 1000 : 0;
-    const simImpressions = simAdSpend > 0 ? (simAdSpend / simCPM) * 1000 : 0;
+  // Deltas vs Baseline
+  const deltaNetRevenue = currentMetrics.netRevenue - baseMetrics.netRevenue;
+  const deltaNetProfit = currentMetrics.netProfit - baseMetrics.netProfit;
+  const deltaContribution = currentMetrics.contribution - baseMetrics.contribution;
+  const deltaAdSpend = currentMetrics.adSpend - baseMetrics.adSpend;
+  const deltaMer = currentMetrics.firstOrderMer - baseMetrics.firstOrderMer;
+  const deltaLtvCac = currentMetrics.ltvCac - baseMetrics.ltvCac;
 
-    const simCTR = baseline.ctr * (1 + scenarios.ctrChangePct / 100);
-    const simCVR = baseline.cvr * (1 + scenarios.cvrChangePct / 100);
+  // Dynamic Scale for the Speedometer Gauge
+  const gaugeScaleMax = useMemo(() => {
+    const absDelta = Math.abs(deltaNetProfit);
+    if (absDelta > 300000) return 500000;
+    if (absDelta > 150000) return 300000;
+    return 150000;
+  }, [deltaNetProfit]);
 
-    const baseClicks = baseImpressions * (baseline.ctr / 100);
-    const simClicks = simImpressions * (simCTR / 100);
-
-    // Orders Generated
-    const simNewOrders = simClicks * (simCVR / 100);
-    const simRepeatOrders = baseRepeatOrders * (1 + scenarios.repeatUpliftPct / 100);
-    const simTotalOrders = simNewOrders + simRepeatOrders;
-
-    // Revenue Breakdown with Discounts
-    const newOrderFullVal = simNewOrders * baseline.aov;
-    const repeatOrderFullVal = simRepeatOrders * baseline.aov;
-    
-    const newDiscountAmount = newOrderFullVal * (scenarios.discountNewPct / 100);
-    const repeatDiscountAmount = repeatOrderFullVal * (scenarios.discountRepeatPct / 100);
-    const simTotalDiscounts = newDiscountAmount + repeatDiscountAmount;
-
-    const simGrossRev = (simTotalOrders * baseline.aov);
-    const simNetRev = simGrossRev - simTotalDiscounts;
-    const simBlendedAOV = simTotalOrders > 0 ? simNetRev / simTotalOrders : 0;
-
-    // Cost Breakdown
-    const simCOGS = (simGrossRev * (baseline.cogsPct / 100)); // COGS on product value
-    const simFulfillmentRate = (baseline.fulfillmentPct / 100) * (1 + scenarios.fulfillmentSurgePct / 100);
-    const simFulfillment = simNetRev * simFulfillmentRate;
-
-    const simTotalCosts = simCOGS + simFulfillment + simAdSpend;
-    const simNetProfit = simNetRev - simTotalCosts;
-    const simProfitMargin = simNetRev > 0 ? (simNetProfit / simNetRev) * 100 : 0;
-    const simROAS = simAdSpend > 0 ? simNetRev / simAdSpend : 0;
-    const simNCAC = simNewOrders > 0 ? simAdSpend / simNewOrders : 0;
-
-    // Comparisons
-    const profitDiff = simNetProfit - baseNetProfit;
-    const profitDiffPct = baseNetProfit !== 0 ? (profitDiff / Math.abs(baseNetProfit)) * 100 : 0;
-    const revDiff = simNetRev - baseNetRev;
-    const revDiffPct = baseNetRev > 0 ? (revDiff / baseNetRev) * 100 : 0;
-
-    return {
-      base: {
-        totalOrders: baseTotalOrders,
-        newOrders: baseNewOrders,
-        repeatOrders: baseRepeatOrders,
-        grossRev: baseGrossRev,
-        discounts: baseDiscounts,
-        netRev: baseNetRev,
-        cogs: baseCOGS,
-        fulfillment: baseFulfillment,
-        adSpend: baseAdSpend,
-        totalCosts: baseTotalCosts,
-        netProfit: baseNetProfit,
-        profitMargin: baseProfitMargin,
-        roas: baseROAS,
-        ncac: baseNCAC,
+  /**
+   * Lever Sensitivity Ranking (+10% favorable improvement in each individual lever from baseline)
+   */
+  const leverRankings = useMemo(() => {
+    const baseScen = buildInitialScenario(baseline);
+    const levers = [
+      {
+        id: 'retAvgRetailPrice',
+        name: 'Returning Customer AOV - Avg Retail Price (+10%)',
+        category: 'Retention',
+        testScen: { ...baseScen, retAvgRetailPrice: baseScen.retAvgRetailPrice * 1.1 }
       },
-      sim: {
-        totalOrders: simTotalOrders,
-        newOrders: simNewOrders,
-        repeatOrders: simRepeatOrders,
-        grossRev: simGrossRev,
-        discounts: simTotalDiscounts,
-        netRev: simNetRev,
-        cogs: simCOGS,
-        fulfillment: simFulfillment,
-        adSpend: simAdSpend,
-        totalCosts: simTotalCosts,
-        netProfit: simNetProfit,
-        profitMargin: simProfitMargin,
-        roas: simROAS,
-        ncac: simNCAC,
-        blendedAov: simBlendedAOV,
+      {
+        id: 'returningOrders',
+        name: 'Returning Orders Volume (+10%)',
+        category: 'Retention',
+        testScen: { ...baseScen, returningOrders: baseScen.returningOrders * 1.1 }
       },
-      diff: {
-        profit: profitDiff,
-        profitPct: profitDiffPct,
-        rev: revDiff,
-        revPct: revDiffPct,
-        isProfitable: profitDiff >= 0,
+      {
+        id: 'newAvgRetailPrice',
+        name: 'New Customer AOV - Avg Retail Price (+10%)',
+        category: 'Acquisition',
+        testScen: { ...baseScen, newAvgRetailPrice: baseScen.newAvgRetailPrice * 1.1 }
+      },
+      {
+        id: 'cpm',
+        name: 'Paid Media CPM Reduction (-10%)',
+        category: 'Acquisition',
+        testScen: { ...baseScen, cpm: baseScen.cpm * 0.9 }
+      },
+      {
+        id: 'cvr',
+        name: 'Store Conversion Rate CVR (+10%)',
+        category: 'Acquisition',
+        testScen: { ...baseScen, cvr: baseScen.cvr * 1.1 }
+      },
+      {
+        id: 'ctr',
+        name: 'Ad Click-Through Rate CTR (+10%)',
+        category: 'Acquisition',
+        testScen: { ...baseScen, ctr: baseScen.ctr * 1.1 }
+      },
+      {
+        id: 'unitCogs',
+        name: 'Unit COGS Reduction (-10%)',
+        category: 'Operations',
+        testScen: { ...baseScen, unitCogs: baseScen.unitCogs * 0.9 }
+      },
+      {
+        id: 'newCustomers',
+        name: 'New Customer Volume (+10% at constant CAC)',
+        category: 'Acquisition',
+        testScen: { ...baseScen, newCustomers: baseScen.newCustomers * 1.1 }
+      },
+      {
+        id: 'fulfillmentPerOrder',
+        name: 'Carrier & Fulfillment Fee Reduction (-10%)',
+        category: 'Operations',
+        testScen: { ...baseScen, fulfillmentPerOrder: baseScen.fulfillmentPerOrder * 0.9 }
+      },
+      {
+        id: 'retDiscountRate',
+        name: 'Returning Discount Rate Reduction (-10%)',
+        category: 'Retention',
+        testScen: { ...baseScen, retDiscountRate: baseScen.retDiscountRate * 0.9 }
+      },
+      {
+        id: 'newDiscountRate',
+        name: 'New Customer Discount Rate Reduction (-10%)',
+        category: 'Acquisition',
+        testScen: { ...baseScen, newDiscountRate: baseScen.newDiscountRate * 0.9 }
+      },
+      {
+        id: 'paymentFeeRate',
+        name: 'Payment Processing Fee Reduction (-10%)',
+        category: 'Operations',
+        testScen: { ...baseScen, paymentFeeRate: baseScen.paymentFeeRate * 0.9 }
+      },
+      {
+        id: 'newRefundRate',
+        name: 'New Customer Refund Rate Reduction (-10%)',
+        category: 'Acquisition',
+        testScen: { ...baseScen, newRefundRate: baseScen.newRefundRate * 0.9 }
       }
-    };
-  }, [baseline, scenarios]);
+    ];
 
-  const formatCurrency = (val) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-  };
+    return levers
+      .map((l) => {
+        const sim = calculateScenario(l.testScen);
+        const profitGain = sim.netProfit - baseMetrics.netProfit;
+        const revGain = sim.netRevenue - baseMetrics.netRevenue;
+        return {
+          ...l,
+          profitGain,
+          revGain,
+          newProfit: sim.netProfit
+        };
+      })
+      .sort((a, b) => b.profitGain - a.profitGain);
+  }, [baseline, baseMetrics]);
 
-  const formatNum = (val) => {
-    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(val);
-  };
+  const topLever = leverRankings[0];
+
+  // 12-Month Cohort & Cash Flow Forecast based on current scenario
+  const forecastMonths = useMemo(() => {
+    const months = [];
+    let cumulativeProfit = 0;
+    for (let m = 1; m <= 12; m++) {
+      const cohortMultiplier = 1 + (m - 1) * (currentMetrics.ltvCac >= 0.8 ? 0.024 : 0.008);
+      const rev = currentMetrics.netRevenue * cohortMultiplier;
+      const contrib = currentMetrics.contribution * cohortMultiplier;
+      const profit = contrib - currentMetrics.fixedOpex;
+      cumulativeProfit += profit;
+      months.push({
+        month: `Month ${m}`,
+        newCust: Math.round(currentMetrics.newCustomers * (1 + (m - 1) * 0.015)),
+        retOrders: Math.round(currentMetrics.returningOrders * cohortMultiplier),
+        netRevenue: rev,
+        adSpend: currentMetrics.adSpend * (1 + (m - 1) * 0.015),
+        contribution: contrib,
+        netProfit: profit,
+        cumulativeProfit
+      });
+    }
+    return months;
+  }, [currentMetrics]);
+
+  // Count how many levers differ from baseline
+  const activeChangesCount = useMemo(() => {
+    const baseScen = buildInitialScenario(baseline);
+    let count = 0;
+    Object.keys(baseScen).forEach((k) => {
+      if (k === 'nCacOverride') {
+        if (scenario.nCacOverride !== null && Math.abs(scenario.nCacOverride - baseMetrics.nCac) > 0.05) {
+          count += 1;
+        }
+      } else if (Math.abs((scenario[k] || 0) - (baseScen[k] || 0)) > 0.01) {
+        count += 1;
+      }
+    });
+    return count;
+  }, [scenario, baseline, baseMetrics.nCac]);
 
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-gray-100 font-sans dir-rtl text-right selection:bg-indigo-600 selection:text-white" dir="rtl">
-      
-      {/* --------------------------------------------------------------------------- */}
-      {/* HEADER BAR */}
-      {/* --------------------------------------------------------------------------- */}
-      <header className="border-b border-gray-800 bg-[#111827]/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
-          
-          {/* Brand Logo & Title */}
+    <div
+      className="min-h-screen transition-colors duration-200 font-sans"
+      style={{
+        backgroundColor: isDark ? '#000000' : '#f1f5f9',
+        color: isDark ? '#FFFFFF' : '#0f172a'
+      }}
+    >
+      {/* Top Navigation & Brand Header */}
+      <header
+        className="sticky top-0 z-30 border-b backdrop-blur-md"
+        style={{
+          backgroundColor: isDark ? 'rgba(17, 24, 40, 0.92)' : 'rgba(255, 255, 255, 0.94)',
+          borderColor: isDark ? 'rgba(0, 170, 255, 0.22)' : '#e2e8f0'
+        }}
+      >
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+          {/* Left: Grow My Business Brand + The Needle Title */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
-              <Sparkles className="w-6 h-6 text-white" />
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0"
+              style={{
+                background: 'linear-gradient(135deg, #00aaff 0%, #032030 100%)',
+                border: '1px solid rgba(0, 170, 255, 0.5)'
+              }}
+            >
+              <TrendingUp className="w-5 h-5 text-white" />
             </div>
+
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold tracking-wider text-indigo-400 uppercase bg-indigo-950/60 border border-indigo-800/50 px-2 py-0.5 rounded">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className="text-[11px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded"
+                  style={{
+                    backgroundColor: 'rgba(0, 170, 255, 0.16)',
+                    color: '#00aaff'
+                  }}
+                >
                   Grow My Business
                 </span>
-                <span className="text-xs text-gray-400">| D2C & Ecommerce Suite</span>
+                <span className="text-xs opacity-40">|</span>
+                <h1 className="text-lg sm:text-xl font-extrabold tracking-tight">
+                  The Needle
+                </h1>
+                <span className="text-xs sm:text-sm font-medium opacity-70 hidden md:inline">
+                  Decision Making System
+                </span>
+                <span
+                  className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border"
+                  style={{
+                    backgroundColor: isDark ? '#032030' : '#e0f2fe',
+                    borderColor: 'rgba(0, 170, 255, 0.35)',
+                    color: '#00aaff'
+                  }}
+                >
+                  {baseline.periodLabel}
+                </span>
               </div>
-              <h1 className="text-lg font-bold text-white flex items-center gap-2">
-                محاكي أرباح وتخفيضات البلاك فرايدي (BFCM Impact Simulator)
-              </h1>
             </div>
           </div>
 
-          {/* Preset Options & Actions */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-400 ml-1 hidden lg:inline">سيناريوهات جاهزة:</span>
+          {/* Center: View Switcher Tabs */}
+          <nav
+            className="flex items-center gap-1 p-1 rounded-xl border overflow-x-auto max-w-full"
+            style={{
+              backgroundColor: isDark ? '#000000' : '#f1f5f9',
+              borderColor: isDark ? 'rgba(0, 170, 255, 0.2)' : '#cbd5e1'
+            }}
+          >
+            {[
+              { id: 'sliders', label: 'Scenario Sliders', icon: Sliders },
+              { id: 'ranking', label: 'Lever Ranking', icon: BarChart3 },
+              { id: 'scorecard', label: 'KPIs Scorecard', icon: Table2 },
+              { id: 'forecast', label: 'Forecast', icon: TrendingUp },
+              { id: 'edit', label: 'How to Edit', icon: Edit3 }
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                    isActive ? 'shadow-sm' : 'opacity-70 hover:opacity-100'
+                  }`}
+                  style={{
+                    backgroundColor: isActive ? '#00aaff' : 'transparent',
+                    color: isActive ? '#FFFFFF' : isDark ? '#FFFFFF' : '#0f172a'
+                  }}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Right: Light/Dark Mode Toggle + Reset to Standard Button */}
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => applyPreset('conservative')}
-              className="text-xs px-3 py-1.5 rounded-lg bg-gray-800/80 hover:bg-gray-700 text-gray-200 border border-gray-700 transition"
+              type="button"
+              onClick={() => setIsDark(!isDark)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition hover:border-[#00aaff]"
+              style={{
+                backgroundColor: isDark ? '#032030' : '#ffffff',
+                borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#cbd5e1'
+              }}
             >
-              متوازن ⚖️
-            </button>
-            <button
-              onClick={() => applyPreset('aggressive')}
-              className="text-xs px-3 py-1.5 rounded-lg bg-indigo-900/40 hover:bg-indigo-800/60 text-indigo-200 border border-indigo-700/60 transition"
-            >
-              هجومي 🚀
-            </button>
-            <button
-              onClick={() => applyPreset('danger_zone')}
-              className="text-xs px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 transition"
-            >
-              مغامرة ⚠️
+              {isDark ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-[#00aaff]" />
+                  <span>Light</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-[#00aaff]" />
+                  <span>Dark</span>
+                </>
+              )}
             </button>
 
             <button
-              onClick={handleReset}
-              className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition mr-2"
-              title="إعادة ضبط المدخلات"
+              type="button"
+              onClick={resetAll}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-white shadow-md transition hover:brightness-110 active:scale-95"
+              style={{
+                backgroundColor: '#00aaff'
+              }}
             >
-              <RefreshCw className="w-4 h-4" />
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Standard</span>
+              {activeChangesCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-black/30">
+                  {activeChangesCount}
+                </span>
+              )}
             </button>
           </div>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-6 text-sm border-t border-gray-800/60 pt-2">
-          <button
-            onClick={() => setActiveTab('simulator')}
-            className={`pb-2.5 font-medium border-b-2 flex items-center gap-2 transition ${
-              activeTab === 'simulator' 
-                ? 'border-indigo-500 text-indigo-400' 
-                : 'border-transparent text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            محاكي الأرباح والتخفيضات
-          </button>
-          <button
-            onClick={() => setActiveTab('abc_strategy')}
-            className={`pb-2.5 font-medium border-b-2 flex items-center gap-2 transition ${
-              activeTab === 'abc_strategy' 
-                ? 'border-indigo-500 text-indigo-400' 
-                : 'border-transparent text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            استراتيجية سلم التخفيضات الذكي (ABC Catalog)
-          </button>
         </div>
       </header>
 
-      {/* --------------------------------------------------------------------------- */}
-      {/* MAIN CONTAINER */}
-      {/* --------------------------------------------------------------------------- */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Main Content Container */}
+      <main className="max-w-[1440px] mx-auto px-4 sm:px-6 py-5 space-y-5">
+        {/* ===================================================================== */}
+        {/* TAB 1: SCENARIO SLIDERS (MAIN INTERACTIVE SIMULATOR DASHBOARD)        */}
+        {/* ===================================================================== */}
+        {activeTab === 'sliders' && (
+          <>
+            {/* TOP EXECUTIVE KPI SUMMARY ROW */}
+            <section className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              {/* 1. Net Profit Impact Gauge Card (4 cols) */}
+              <div
+                className="lg:col-span-4 rounded-2xl p-4 sm:p-5 border shadow-lg"
+                style={{
+                  backgroundColor: isDark ? '#111828' : '#ffffff',
+                  borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#e2e8f0'
+                }}
+              >
+                <NetProfitGauge
+                  deltaProfit={deltaNetProfit}
+                  scaleMax={gaugeScaleMax}
+                  isDark={isDark}
+                />
+              </div>
 
-        {activeTab === 'simulator' && (
-          <div className="space-y-6">
-
-            {/* 1. TOP ALERT SUMMARY BANNER */}
-            <div className={`rounded-2xl p-6 border backdrop-blur-xl transition-all shadow-xl ${
-              metrics.diff.isProfitable 
-                ? 'bg-emerald-950/20 border-emerald-500/40 shadow-emerald-950/20' 
-                : 'bg-rose-950/30 border-rose-500/50 shadow-rose-950/30'
-            }`}>
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                
-                <div className="flex items-start gap-4">
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-lg ${
-                    metrics.diff.isProfitable 
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse'
-                  }`}>
-                    {metrics.diff.isProfitable ? (
-                      <TrendingUp className="w-8 h-8" />
-                    ) : (
-                      <AlertTriangle className="w-8 h-8" />
-                    )}
+              {/* 2. Top Line, Bottom Line & 4 Mini Sub-Cards (8 cols) */}
+              <div className="lg:col-span-8 flex flex-col justify-between gap-4">
+                {/* Upper Row: NET REVENUE (TOP LINE) & NET PROFIT (BOTTOM LINE) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* NET REVENUE CARD */}
+                  <div
+                    className="rounded-2xl p-4 sm:p-5 border shadow-lg relative overflow-hidden"
+                    style={{
+                      backgroundColor: isDark ? '#111828' : '#ffffff',
+                      borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#e2e8f0'
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider opacity-75">
+                        NET REVENUE <span className="text-[#00aaff]">(TOP LINE)</span>
+                      </span>
+                      <DollarSign className="w-4 h-4 text-[#00aaff]" />
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight my-1">
+                      {fmtCurrency(currentMetrics.netRevenue)}
+                    </div>
+                    <div className="flex items-center justify-between text-xs mt-2 pt-2 border-t border-slate-700/30">
+                      <span className="opacity-65 font-mono">
+                        Std: {fmtCurrency(baseMetrics.netRevenue)}
+                      </span>
+                      <span
+                        className="font-mono font-bold"
+                        style={{
+                          color:
+                            deltaNetRevenue > 0.5
+                              ? '#10b981'
+                              : deltaNetRevenue < -0.5
+                              ? '#ef4444'
+                              : '#00aaff'
+                        }}
+                      >
+                        {Math.abs(deltaNetRevenue) < 0.5
+                          ? 'No Change'
+                          : `Change: ${fmtDeltaCurrency(deltaNetRevenue)}`}
+                      </span>
+                    </div>
                   </div>
 
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full uppercase ${
-                        metrics.diff.isProfitable 
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
-                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                      }`}>
-                        {metrics.diff.isProfitable ? 'استراتيجية مربحة ✅' : 'تحذير: نمو وهمي ووهم الخصومات ⚠️'}
+                  {/* NET PROFIT CARD */}
+                  <div
+                    className="rounded-2xl p-4 sm:p-5 border shadow-lg relative overflow-hidden"
+                    style={{
+                      backgroundColor: isDark ? '#111828' : '#ffffff',
+                      borderColor:
+                        deltaNetProfit < -0.5
+                          ? 'rgba(239, 68, 68, 0.45)'
+                          : deltaNetProfit > 0.5
+                          ? 'rgba(16, 185, 129, 0.45)'
+                          : isDark
+                          ? 'rgba(0, 170, 255, 0.25)'
+                          : '#e2e8f0'
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-bold uppercase tracking-wider opacity-75">
+                        NET PROFIT <span className="text-[#00aaff]">(BOTTOM LINE)</span>
                       </span>
-                      <span className="text-xs text-gray-400">مقارنة بوضعك الطبيعي</span>
+                      <Target className="w-4 h-4 text-[#00aaff]" />
                     </div>
+                    <div
+                      className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight my-1"
+                      style={{
+                        color:
+                          currentMetrics.netProfit < 0
+                            ? '#ef4444'
+                            : deltaNetProfit > 0.5
+                            ? '#10b981'
+                            : undefined
+                      }}
+                    >
+                      {fmtCurrency(currentMetrics.netProfit)}
+                    </div>
+                    <div className="flex items-center justify-between text-xs mt-2 pt-2 border-t border-slate-700/30">
+                      <span className="opacity-65 font-mono">
+                        Std: {fmtCurrency(baseMetrics.netProfit)}
+                      </span>
+                      <span
+                        className="font-mono font-bold"
+                        style={{
+                          color:
+                            deltaNetProfit > 0.5
+                              ? '#10b981'
+                              : deltaNetProfit < -0.5
+                              ? '#ef4444'
+                              : '#00aaff'
+                        }}
+                      >
+                        {Math.abs(deltaNetProfit) < 0.5
+                          ? 'No Change'
+                          : `Change: ${fmtDeltaCurrency(deltaNetProfit)}`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
-                    <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
-                      {metrics.diff.isProfitable ? (
-                        <>زيادة صافية في الأرباح بقيمة <span className="text-emerald-400">{formatCurrency(metrics.diff.profit)}</span></>
-                      ) : (
-                        <>انخفاض صافي الأرباح بقيمة <span className="text-rose-400">{formatCurrency(Math.abs(metrics.diff.profit))}</span></>
-                      )}
+                {/* Lower Row: 4 Mini Metric Cards (CONTRIBUTION, AD SPEND, 1ST-ORDER MER, LTV:CAC) */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {/* CONTRIBUTION */}
+                  <div
+                    className="rounded-xl p-3.5 border"
+                    style={{
+                      backgroundColor: isDark ? '#111828' : '#ffffff',
+                      borderColor: isDark ? 'rgba(0, 170, 255, 0.2)' : '#e2e8f0'
+                    }}
+                  >
+                    <div className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                      CONTRIBUTION
+                    </div>
+                    <div className="text-lg font-extrabold font-mono mt-1">
+                      {fmtCurrency(currentMetrics.contribution)}
+                    </div>
+                    <div
+                      className="text-[11px] font-mono mt-0.5"
+                      style={{
+                        color:
+                          deltaContribution > 0.5
+                            ? '#10b981'
+                            : deltaContribution < -0.5
+                            ? '#ef4444'
+                            : '#94a3b8'
+                      }}
+                    >
+                      {Math.abs(deltaContribution) < 0.5
+                        ? `Std: ${fmtCurrency(baseMetrics.contribution)}`
+                        : `${fmtDeltaCurrency(deltaContribution)}`}
+                    </div>
+                  </div>
+
+                  {/* AD SPEND */}
+                  <div
+                    className="rounded-xl p-3.5 border"
+                    style={{
+                      backgroundColor: isDark ? '#111828' : '#ffffff',
+                      borderColor: isDark ? 'rgba(0, 170, 255, 0.2)' : '#e2e8f0'
+                    }}
+                  >
+                    <div className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                      AD SPEND
+                    </div>
+                    <div className="text-lg font-extrabold font-mono mt-1">
+                      {fmtCurrency(currentMetrics.adSpend)}
+                    </div>
+                    <div
+                      className="text-[11px] font-mono mt-0.5"
+                      style={{
+                        color: Math.abs(deltaAdSpend) < 0.5 ? '#94a3b8' : '#00aaff'
+                      }}
+                    >
+                      {Math.abs(deltaAdSpend) < 0.5
+                        ? `Std: ${fmtCurrency(baseMetrics.adSpend)}`
+                        : `${fmtDeltaCurrency(deltaAdSpend)}`}
+                    </div>
+                  </div>
+
+                  {/* 1ST-ORDER MER */}
+                  <div
+                    className="rounded-xl p-3.5 border"
+                    style={{
+                      backgroundColor: isDark ? '#111828' : '#ffffff',
+                      borderColor: isDark ? 'rgba(0, 170, 255, 0.2)' : '#e2e8f0'
+                    }}
+                  >
+                    <div className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                      1ST-ORDER MER
+                    </div>
+                    <div className="text-lg font-extrabold font-mono mt-1">
+                      {fmtRatio(currentMetrics.firstOrderMer)}
+                    </div>
+                    <div
+                      className="text-[11px] font-mono mt-0.5"
+                      style={{
+                        color:
+                          deltaMer > 0.005
+                            ? '#10b981'
+                            : deltaMer < -0.005
+                            ? '#ef4444'
+                            : '#94a3b8'
+                      }}
+                    >
+                      {Math.abs(deltaMer) < 0.005
+                        ? `Std: ${fmtRatio(baseMetrics.firstOrderMer)}`
+                        : `${deltaMer > 0 ? '+' : ''}${deltaMer.toFixed(2)}x`}
+                    </div>
+                  </div>
+
+                  {/* LTV:CAC */}
+                  <div
+                    className="rounded-xl p-3.5 border"
+                    style={{
+                      backgroundColor: isDark ? '#111828' : '#ffffff',
+                      borderColor: isDark ? 'rgba(0, 170, 255, 0.2)' : '#e2e8f0'
+                    }}
+                  >
+                    <div className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                      LTV:CAC
+                    </div>
+                    <div className="text-lg font-extrabold font-mono mt-1">
+                      {fmtRatio(currentMetrics.ltvCac)}
+                    </div>
+                    <div
+                      className="text-[11px] font-mono mt-0.5"
+                      style={{
+                        color:
+                          deltaLtvCac > 0.005
+                            ? '#10b981'
+                            : deltaLtvCac < -0.005
+                            ? '#ef4444'
+                            : '#94a3b8'
+                      }}
+                    >
+                      {Math.abs(deltaLtvCac) < 0.005
+                        ? `Std: ${fmtRatio(baseMetrics.ltvCac)}`
+                        : `${deltaLtvCac > 0 ? '+' : ''}${deltaLtvCac.toFixed(2)}x`}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* DYNAMIC INSIGHT CALLOUT BANNER */}
+            <section
+              className="rounded-xl px-4 py-3 border flex flex-wrap items-center justify-between gap-3"
+              style={{
+                backgroundColor: isDark ? '#032030' : '#e0f2fe',
+                borderColor: 'rgba(0, 170, 255, 0.45)'
+              }}
+            >
+              <div className="flex items-center gap-2.5 text-xs sm:text-sm">
+                <span
+                  className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: '#00aaff', color: '#FFFFFF' }}
+                >
+                  <Zap className="w-4 h-4" />
+                </span>
+                <div>
+                  <span className="font-bold text-[#00aaff]">Your biggest lever: </span>
+                  <span className="font-semibold">{topLever.name}.</span>{' '}
+                  <span className="opacity-90">
+                    A 10% improvement adds{' '}
+                    <strong className="font-mono text-emerald-400">
+                      {fmtCurrency(topLever.profitGain)}
+                    </strong>{' '}
+                    to net profit.
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('ranking')}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg border transition hover:bg-[#00aaff] hover:text-white"
+                style={{
+                  borderColor: '#00aaff',
+                  color: '#00aaff'
+                }}
+              >
+                View Full Lever Ranking →
+              </button>
+            </section>
+
+            {/* THREE-COLUMN INTERACTIVE SCENARIO LEVERS GRID */}
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+              {/* ============================================================= */}
+              {/* COLUMN 1: ACQUISITION LEVERS (CAC, Funnel & AOV)              */}
+              {/* ============================================================= */}
+              <div
+                className="rounded-2xl p-4 sm:p-5 border shadow-lg space-y-4"
+                style={{
+                  backgroundColor: isDark ? '#111828' : '#ffffff',
+                  borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#e2e8f0'
+                }}
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-slate-700/30">
+                  <div>
+                    <h2 className="text-sm font-extrabold uppercase tracking-wider text-[#00aaff]">
+                      ACQUISITION LEVERS
                     </h2>
-
-                    <p className="text-sm text-gray-300 mt-1 max-w-2xl leading-relaxed">
-                      {metrics.diff.isProfitable ? (
-                        `ممتاز! الخطة تحقق ارتفاعاً في الإيرادات بنسبة (${metrics.diff.revPct.toFixed(1)}%) وتترجم إلى نمو حقيقي في صافي أرباحك الصافية. حجم المبيعات الإضافي يعوض قيمة الخصم الممنوح.`
-                      ) : (
-                        `رغم ارتفاع المبيعات بنسبة (+${metrics.diff.revPct.toFixed(1)}%)، إلا أن الخصومات الكبيرة وتضخم تكلفة الإعلانات والتوصيل تلتهم هامش ربحك! أنت تبيع أكثر وتكسب أقل.`
-                      )}
+                    <p className="text-xs opacity-65 mt-0.5">
+                      Min 0 to Max Range • White tick = Standard
                     </p>
                   </div>
+                  <span
+                    className="text-[11px] font-mono px-2.5 py-1 rounded-lg border"
+                    style={{
+                      backgroundColor: isDark ? '#032030' : '#f1f5f9',
+                      borderColor: 'rgba(0, 170, 255, 0.25)'
+                    }}
+                  >
+                    1st-Order Rev: {fmtCurrency(currentMetrics.newNetRevenue)}
+                  </span>
                 </div>
 
-                {/* Key Numbers Box */}
-                <div className="flex items-center gap-4 bg-gray-950/60 p-4 rounded-xl border border-gray-800 shrink-0 w-full md:w-auto justify-around">
-                  <div className="text-center px-3">
-                    <span className="text-xs text-gray-400 block">صافي أرباح BFCM</span>
-                    <span className={`text-xl font-bold ${metrics.sim.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {formatCurrency(metrics.sim.netProfit)}
-                    </span>
-                    <span className="text-[10px] text-gray-500 block">هامش {metrics.sim.profitMargin.toFixed(1)}%</span>
-                  </div>
-                  
-                  <div className="h-8 w-px bg-gray-800"></div>
+                {/* 1. New Customers (0 to 15,000, Std 3,500) */}
+                <LeverSlider
+                  label="New Customers"
+                  value={scenario.newCustomers}
+                  baseValue={baseMetrics.newCustomers}
+                  {...SLIDER_RANGES.newCustomers}
+                  formatValue={(v) => fmtNumber(Math.round(v))}
+                  onChange={(v) => updateMetric('newCustomers', v)}
+                  isDark={isDark}
+                />
 
-                  <div className="text-center px-3">
-                    <span className="text-xs text-gray-400 block">تآكل الخصومات</span>
-                    <span className="text-xl font-bold text-amber-400">
-                      -{formatCurrency(metrics.sim.discounts)}
+                {/* 2. nCAC (Acquisition Cost) (0 to $250, Std $53.76) */}
+                <LeverSlider
+                  label="nCAC (Acquisition Cost $)"
+                  value={currentMetrics.nCac}
+                  baseValue={baseMetrics.nCac}
+                  {...SLIDER_RANGES.nCac}
+                  inverseGood={true}
+                  badgeNote={
+                    scenario.nCacOverride === null ? 'Synced w/ Funnel' : 'Direct Override'
+                  }
+                  formatValue={(v) => fmtCurrency(v, 2)}
+                  onChange={(v) => {
+                    setScenario((prev) => ({
+                      ...prev,
+                      nCacOverride: v
+                    }));
+                  }}
+                  isDark={isDark}
+                />
+
+                {/* Funnel Sub-levers (CPM, CTR, CVR) */}
+                <div
+                  className="rounded-xl border p-3 space-y-2.5"
+                  style={{
+                    backgroundColor: isDark ? 'rgba(3, 32, 48, 0.55)' : '#f8fafc',
+                    borderColor: isDark ? 'rgba(0, 170, 255, 0.22)' : '#e2e8f0'
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowFunnelSub(!showFunnelSub)}
+                    className="w-full flex items-center justify-between text-xs font-bold text-[#00aaff]"
+                  >
+                    <span>Funnel Sub-levers (CPM, CTR, Conversion Rate)</span>
+                    <span className="flex items-center gap-1 text-[11px] opacity-85">
+                      {showFunnelSub ? 'Hide' : 'Show'}
+                      {showFunnelSub ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
                     </span>
-                    <span className="text-[10px] text-gray-500 block">خسارة من السعر الأصلي</span>
-                  </div>
+                  </button>
+
+                  {showFunnelSub && (
+                    <div className="space-y-2.5 pt-1">
+                      {/* CPM ($0 to $200, Std $32.00) */}
+                      <LeverSlider
+                        label="CPM ($ per 1k Impr.)"
+                        value={scenario.cpm}
+                        baseValue={baseMetrics.cpm}
+                        {...SLIDER_RANGES.cpm}
+                        inverseGood={true}
+                        formatValue={(v) => fmtCurrency(v, 2)}
+                        onChange={(v) => updateMetric('cpm', v)}
+                        isDark={isDark}
+                      />
+                      {/* CTR (0% to 15%, Std 2.40%) */}
+                      <LeverSlider
+                        label="CTR (Click-Through Rate %)"
+                        value={scenario.ctr}
+                        baseValue={baseMetrics.ctr}
+                        {...SLIDER_RANGES.ctr}
+                        formatValue={(v) => fmtPercent(v, 2)}
+                        onChange={(v) => updateMetric('ctr', v)}
+                        isDark={isDark}
+                      />
+                      {/* Conversion Rate / CVR (0% to 20%, Std 2.48%) */}
+                      <LeverSlider
+                        label="Conversion Rate / CVR (%)"
+                        value={scenario.cvr}
+                        baseValue={baseMetrics.cvr}
+                        {...SLIDER_RANGES.cvr}
+                        formatValue={(v) => fmtPercent(v, 2)}
+                        onChange={(v) => updateMetric('cvr', v)}
+                        isDark={isDark}
+                      />
+                    </div>
+                  )}
                 </div>
 
+                {/* 3. New Customer AOV Slider + Sub-Levers */}
+                <div
+                  className="rounded-xl border p-3.5 space-y-3"
+                  style={{
+                    backgroundColor: isDark ? '#032030' : '#f8fafc',
+                    borderColor: isDark ? 'rgba(0, 170, 255, 0.28)' : '#cbd5e1'
+                  }}
+                >
+                  <LeverSlider
+                    label="New Customer AOV ($)"
+                    value={currentMetrics.newAov}
+                    baseValue={baseMetrics.newAov}
+                    {...SLIDER_RANGES.newAov}
+                    badgeNote="Net AOV"
+                    formatValue={(v) => fmtCurrency(v, 2)}
+                    onChange={(v) => handleDirectAovChange('new', v)}
+                    isDark={isDark}
+                  />
+
+                  {/* AOV Levers Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setShowNewAovSub(!showNewAovSub)}
+                    className="w-full flex items-center justify-between text-xs font-bold text-[#00aaff] pt-1"
+                  >
+                    <span>AOV Sub-Levers (Units, Price, Discount, Shipping)</span>
+                    <span className="flex items-center gap-1 text-[11px]">
+                      {showNewAovSub ? 'Hide' : 'Show'}
+                      {showNewAovSub ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
+                    </span>
+                  </button>
+
+                  {showNewAovSub && (
+                    <div className="space-y-2.5 pt-1">
+                      <div
+                        className="p-2.5 rounded-lg border flex items-center justify-between text-xs"
+                        style={{
+                          backgroundColor: isDark ? '#111828' : '#ffffff',
+                          borderColor: isDark ? '#1e293b' : '#e2e8f0'
+                        }}
+                      >
+                        <div>
+                          <div className="font-semibold">Gross Sales (New)</div>
+                          <div className="text-[10px] opacity-60 font-mono">
+                            Std: {fmtCurrency(baseMetrics.newGrossSales)}
+                          </div>
+                        </div>
+                        <div className="font-mono font-bold text-sm">
+                          {fmtCurrency(currentMetrics.newGrossSales)}
+                        </div>
+                      </div>
+
+                      <div className="pl-2 border-l-2 border-[#00aaff]/40 space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowNewUnitsSub(!showNewUnitsSub)}
+                          className="w-full flex items-center justify-between text-[11px] font-semibold opacity-80 hover:opacity-100"
+                        >
+                          <span>Units per Order &amp; Unit Retail Price</span>
+                          <span>{showNewUnitsSub ? 'Hide' : 'Show'}</span>
+                        </button>
+
+                        {showNewUnitsSub && (
+                          <div className="space-y-2">
+                            <LeverSlider
+                              label="Units per Order"
+                              value={scenario.newUnitsPerOrder}
+                              baseValue={baseMetrics.newUnitsPerOrder}
+                              {...SLIDER_RANGES.newUnitsPerOrder}
+                              formatValue={(v) => `${v.toFixed(1)} units`}
+                              onChange={(v) => updateMetric('newUnitsPerOrder', v)}
+                              isDark={isDark}
+                            />
+                            <LeverSlider
+                              label="Avg Retail Price ($)"
+                              value={scenario.newAvgRetailPrice}
+                              baseValue={baseMetrics.newAvgRetailPrice}
+                              {...SLIDER_RANGES.newAvgRetailPrice}
+                              formatValue={(v) => fmtCurrency(v, 2)}
+                              onChange={(v) => updateMetric('newAvgRetailPrice', v)}
+                              isDark={isDark}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <LeverSlider
+                        label="Discount Rate (%)"
+                        value={scenario.newDiscountRate}
+                        baseValue={baseMetrics.newDiscountRate}
+                        {...SLIDER_RANGES.newDiscountRate}
+                        inverseGood={true}
+                        formatValue={(v) => fmtPercent(v, 1)}
+                        onChange={(v) => updateMetric('newDiscountRate', v)}
+                        isDark={isDark}
+                      />
+
+                      <LeverSlider
+                        label="Shipping Collected ($ / order)"
+                        value={scenario.newShippingPerOrder}
+                        baseValue={baseMetrics.newShippingPerOrder}
+                        {...SLIDER_RANGES.newShippingPerOrder}
+                        formatValue={(v) => fmtCurrency(v, 2)}
+                        onChange={(v) => updateMetric('newShippingPerOrder', v)}
+                        isDark={isDark}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. New Customer Refund Rate (0% to 50%, Std 4.5%) */}
+                <LeverSlider
+                  label="New Customer Refund Rate (%)"
+                  value={scenario.newRefundRate}
+                  baseValue={baseMetrics.newRefundRate}
+                  {...SLIDER_RANGES.newRefundRate}
+                  inverseGood={true}
+                  formatValue={(v) => fmtPercent(v, 1)}
+                  onChange={(v) => updateMetric('newRefundRate', v)}
+                  isDark={isDark}
+                />
+              </div>
+
+              {/* ============================================================= */}
+              {/* COLUMN 2: RETENTION LEVERS (Repeat Orders & AOV)              */}
+              {/* ============================================================= */}
+              <div
+                className="rounded-2xl p-4 sm:p-5 border shadow-lg space-y-4"
+                style={{
+                  backgroundColor: isDark ? '#111828' : '#ffffff',
+                  borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#e2e8f0'
+                }}
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-slate-700/30">
+                  <div>
+                    <h2 className="text-sm font-extrabold uppercase tracking-wider text-[#00aaff]">
+                      RETENTION LEVERS
+                    </h2>
+                    <p className="text-xs opacity-65 mt-0.5">
+                      Min 0 to Max Range • Repeat Orders &amp; AOV
+                    </p>
+                  </div>
+                  <span
+                    className="text-[11px] font-mono px-2.5 py-1 rounded-lg border"
+                    style={{
+                      backgroundColor: isDark ? '#032030' : '#f1f5f9',
+                      borderColor: 'rgba(0, 170, 255, 0.25)'
+                    }}
+                  >
+                    Repeat Rev: {fmtCurrency(currentMetrics.retNetRevenue)}
+                  </span>
+                </div>
+
+                {/* 1. Returning Orders (0 to 15,000, Std 3,920) */}
+                <LeverSlider
+                  label="Returning Orders"
+                  value={scenario.returningOrders}
+                  baseValue={baseMetrics.returningOrders}
+                  {...SLIDER_RANGES.returningOrders}
+                  formatValue={(v) => fmtNumber(Math.round(v))}
+                  onChange={(v) => updateMetric('returningOrders', v)}
+                  isDark={isDark}
+                />
+
+                {/* 2. Returning Customer AOV Slider + Sub-Levers */}
+                <div
+                  className="rounded-xl border p-3.5 space-y-3"
+                  style={{
+                    backgroundColor: isDark ? '#032030' : '#f8fafc',
+                    borderColor: isDark ? 'rgba(0, 170, 255, 0.28)' : '#cbd5e1'
+                  }}
+                >
+                  <LeverSlider
+                    label="Returning Customer AOV ($)"
+                    value={currentMetrics.retAov}
+                    baseValue={baseMetrics.retAov}
+                    {...SLIDER_RANGES.retAov}
+                    badgeNote="Net AOV"
+                    formatValue={(v) => fmtCurrency(v, 2)}
+                    onChange={(v) => handleDirectAovChange('ret', v)}
+                    isDark={isDark}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => setShowRetAovSub(!showRetAovSub)}
+                    className="w-full flex items-center justify-between text-xs font-bold text-[#00aaff] pt-1"
+                  >
+                    <span>AOV Sub-Levers (Units, Price, Discount, Shipping)</span>
+                    <span className="flex items-center gap-1 text-[11px]">
+                      {showRetAovSub ? 'Hide' : 'Show'}
+                      {showRetAovSub ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
+                    </span>
+                  </button>
+
+                  {showRetAovSub && (
+                    <div className="space-y-2.5 pt-1">
+                      <div
+                        className="p-2.5 rounded-lg border flex items-center justify-between text-xs"
+                        style={{
+                          backgroundColor: isDark ? '#111828' : '#ffffff',
+                          borderColor: isDark ? '#1e293b' : '#e2e8f0'
+                        }}
+                      >
+                        <div>
+                          <div className="font-semibold">Gross Sales (Returning)</div>
+                          <div className="text-[10px] opacity-60 font-mono">
+                            Std: {fmtCurrency(baseMetrics.retGrossSales)}
+                          </div>
+                        </div>
+                        <div className="font-mono font-bold text-sm">
+                          {fmtCurrency(currentMetrics.retGrossSales)}
+                        </div>
+                      </div>
+
+                      <div className="pl-2 border-l-2 border-[#00aaff]/40 space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowRetUnitsSub(!showRetUnitsSub)}
+                          className="w-full flex items-center justify-between text-[11px] font-semibold opacity-80 hover:opacity-100"
+                        >
+                          <span>Units per Order &amp; Unit Retail Price</span>
+                          <span>{showRetUnitsSub ? 'Hide' : 'Show'}</span>
+                        </button>
+
+                        {showRetUnitsSub && (
+                          <div className="space-y-2">
+                            <LeverSlider
+                              label="Units per Order"
+                              value={scenario.retUnitsPerOrder}
+                              baseValue={baseMetrics.retUnitsPerOrder}
+                              {...SLIDER_RANGES.retUnitsPerOrder}
+                              formatValue={(v) => `${v.toFixed(1)} units`}
+                              onChange={(v) => updateMetric('retUnitsPerOrder', v)}
+                              isDark={isDark}
+                            />
+                            <LeverSlider
+                              label="Avg Retail Price ($)"
+                              value={scenario.retAvgRetailPrice}
+                              baseValue={baseMetrics.retAvgRetailPrice}
+                              {...SLIDER_RANGES.retAvgRetailPrice}
+                              formatValue={(v) => fmtCurrency(v, 2)}
+                              onChange={(v) => updateMetric('retAvgRetailPrice', v)}
+                              isDark={isDark}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <LeverSlider
+                        label="Discount Rate (%)"
+                        value={scenario.retDiscountRate}
+                        baseValue={baseMetrics.retDiscountRate}
+                        {...SLIDER_RANGES.retDiscountRate}
+                        inverseGood={true}
+                        formatValue={(v) => fmtPercent(v, 1)}
+                        onChange={(v) => updateMetric('retDiscountRate', v)}
+                        isDark={isDark}
+                      />
+
+                      <LeverSlider
+                        label="Shipping Collected ($ / order)"
+                        value={scenario.retShippingPerOrder}
+                        baseValue={baseMetrics.retShippingPerOrder}
+                        {...SLIDER_RANGES.retShippingPerOrder}
+                        formatValue={(v) => fmtCurrency(v, 2)}
+                        onChange={(v) => updateMetric('retShippingPerOrder', v)}
+                        isDark={isDark}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Returning Customer Refund Rate (0% to 50%, Std 3.2%) */}
+                <LeverSlider
+                  label="Returning Customer Refund Rate (%)"
+                  value={scenario.retRefundRate}
+                  baseValue={baseMetrics.retRefundRate}
+                  {...SLIDER_RANGES.retRefundRate}
+                  inverseGood={true}
+                  formatValue={(v) => fmtPercent(v, 1)}
+                  onChange={(v) => updateMetric('retRefundRate', v)}
+                  isDark={isDark}
+                />
+              </div>
+
+              {/* ============================================================= */}
+              {/* COLUMN 3: OPS LEVERS (COGS, Fulfillment & Processing)         */}
+              {/* ============================================================= */}
+              <div
+                className="rounded-2xl p-4 sm:p-5 border shadow-lg space-y-4"
+                style={{
+                  backgroundColor: isDark ? '#111828' : '#ffffff',
+                  borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#e2e8f0'
+                }}
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-slate-700/30">
+                  <div>
+                    <h2 className="text-sm font-extrabold uppercase tracking-wider text-[#00aaff]">
+                      OPS LEVERS
+                    </h2>
+                    <p className="text-xs opacity-65 mt-0.5">
+                      Min 0 to Max Range • COGS &amp; Fulfillment
+                    </p>
+                  </div>
+                  <span
+                    className="text-[11px] font-mono px-2.5 py-1 rounded-lg border"
+                    style={{
+                      backgroundColor: isDark ? '#032030' : '#f1f5f9',
+                      borderColor: 'rgba(0, 170, 255, 0.25)'
+                    }}
+                  >
+                    Gross Margin: {fmtPercent(currentMetrics.grossMarginPct, 1)}
+                  </span>
+                </div>
+
+                {/* 1. Unit COGS ($0 to $150, Std $14.50) */}
+                <LeverSlider
+                  label="Unit COGS ($ per unit)"
+                  value={scenario.unitCogs}
+                  baseValue={baseMetrics.unitCogs}
+                  {...SLIDER_RANGES.unitCogs}
+                  inverseGood={true}
+                  formatValue={(v) => fmtCurrency(v, 2)}
+                  onChange={(v) => updateMetric('unitCogs', v)}
+                  isDark={isDark}
+                />
+
+                {/* 2. Carrier & Fulfillment Fee ($0 to $50, Std $7.80) */}
+                <LeverSlider
+                  label="Carrier & Fulfillment Fee ($ / Order)"
+                  value={scenario.fulfillmentPerOrder}
+                  baseValue={baseMetrics.fulfillmentPerOrder}
+                  {...SLIDER_RANGES.fulfillmentPerOrder}
+                  inverseGood={true}
+                  formatValue={(v) => fmtCurrency(v, 2)}
+                  onChange={(v) => updateMetric('fulfillmentPerOrder', v)}
+                  isDark={isDark}
+                />
+
+                {/* 3. Payment Processing Fees (0% to 15%, Std 2.9%) */}
+                <LeverSlider
+                  label="Payment Processing Fees (% of Net Sales)"
+                  value={scenario.paymentFeeRate}
+                  baseValue={baseMetrics.paymentFeeRate}
+                  {...SLIDER_RANGES.paymentFeeRate}
+                  inverseGood={true}
+                  formatValue={(v) => fmtPercent(v, 1)}
+                  onChange={(v) => updateMetric('paymentFeeRate', v)}
+                  isDark={isDark}
+                />
+
+                {/* 4. Monthly Fixed OPEX Slider ($0 to $300k, Std $80k) */}
+                <LeverSlider
+                  label="Monthly Fixed OPEX ($)"
+                  value={scenario.fixedOpex}
+                  baseValue={baseMetrics.fixedOpex}
+                  {...SLIDER_RANGES.fixedOpex}
+                  inverseGood={true}
+                  formatValue={(v) => fmtCurrency(v)}
+                  onChange={(v) => updateMetric('fixedOpex', v)}
+                  isDark={isDark}
+                />
+
+                {/* 5. Product Margin & Detailed COGS Calculation */}
+                <div
+                  className="rounded-xl border p-3.5"
+                  style={{
+                    backgroundColor: isDark ? '#032030' : '#f8fafc',
+                    borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#cbd5e1'
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowMarginDetails(!showMarginDetails)}
+                    className="w-full flex items-center justify-between text-xs font-bold"
+                  >
+                    <span>Product Margin &amp; Detailed P&amp;L Breakdown</span>
+                    <span className="text-[#00aaff] flex items-center gap-1">
+                      {showMarginDetails ? 'Hide Details' : 'View Details'}
+                      {showMarginDetails ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
+                    </span>
+                  </button>
+
+                  {showMarginDetails && (
+                    <div className="mt-3 pt-3 border-t border-slate-700/30 space-y-1.5 text-xs font-mono">
+                      <div className="flex justify-between">
+                        <span className="opacity-70">Total Gross Sales:</span>
+                        <span>{fmtCurrency(currentMetrics.totalGrossSales)}</span>
+                      </div>
+                      <div className="flex justify-between text-rose-400">
+                        <span>Total Discounts:</span>
+                        <span>-{fmtCurrency(currentMetrics.totalDiscounts)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="opacity-70">Shipping Collected:</span>
+                        <span>+{fmtCurrency(currentMetrics.totalShipping)}</span>
+                      </div>
+                      <div className="flex justify-between text-rose-400">
+                        <span>Total Refunds:</span>
+                        <span>-{fmtCurrency(currentMetrics.totalRefunds)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold pt-1 border-t border-slate-700/30">
+                        <span>Net Revenue:</span>
+                        <span className="text-[#00aaff]">
+                          {fmtCurrency(currentMetrics.netRevenue)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-rose-400">
+                        <span>Total COGS ({fmtNumber(Math.round(currentMetrics.totalUnits))} units):</span>
+                        <span>-{fmtCurrency(currentMetrics.totalCogs)}</span>
+                      </div>
+                      <div className="flex justify-between text-rose-400">
+                        <span>Fulfillment &amp; Carrier:</span>
+                        <span>-{fmtCurrency(currentMetrics.totalFulfillment)}</span>
+                      </div>
+                      <div className="flex justify-between text-rose-400">
+                        <span>Payment Processing:</span>
+                        <span>-{fmtCurrency(currentMetrics.totalPaymentFees)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold pt-1 border-t border-slate-700/30">
+                        <span>Gross Profit:</span>
+                        <span>{fmtCurrency(currentMetrics.grossProfit)}</span>
+                      </div>
+                      <div className="flex justify-between text-rose-400">
+                        <span>Paid Ad Spend:</span>
+                        <span>-{fmtCurrency(currentMetrics.adSpend)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold">
+                        <span>Contribution Margin:</span>
+                        <span>{fmtCurrency(currentMetrics.contribution)}</span>
+                      </div>
+                      <div className="flex justify-between opacity-75">
+                        <span>Fixed Monthly OPEX:</span>
+                        <span>-{fmtCurrency(currentMetrics.fixedOpex)}</span>
+                      </div>
+                      <div className="flex justify-between font-extrabold text-sm pt-1.5 border-t border-slate-700/40">
+                        <span>Bottom-Line Net Profit:</span>
+                        <span
+                          style={{
+                            color: currentMetrics.netProfit >= 0 ? '#10b981' : '#ef4444'
+                          }}
+                        >
+                          {fmtCurrency(currentMetrics.netProfit)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 6. Scenario Mechanics & Quick Simulation Presets Card */}
+                <div
+                  className="rounded-xl p-4 border-l-4 space-y-3"
+                  style={{
+                    backgroundColor: isDark ? '#032030' : '#f0f9ff',
+                    borderLeftColor: '#00aaff',
+                    borderTop: isDark ? '1px solid rgba(0,170,255,0.2)' : '1px solid #bae6fd',
+                    borderRight: isDark ? '1px solid rgba(0,170,255,0.2)' : '1px solid #bae6fd',
+                    borderBottom: isDark ? '1px solid rgba(0,170,255,0.2)' : '1px solid #bae6fd'
+                  }}
+                >
+                  <div className="flex items-center gap-2 text-xs font-extrabold text-[#00aaff]">
+                    <Info className="w-4 h-4 shrink-0" />
+                    <span>Quick Scenario Presets</span>
+                  </div>
+                  <p className="text-xs leading-relaxed opacity-85">
+                    Every slider starts at <strong>0</strong> up to a realistic ceiling, with the
+                    cursor anchored at your <strong>Standard Benchmark</strong>. Drag any slider or
+                    type exact numbers, or test a preset below:
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => applyPreset('black_friday_trap')}
+                      className="w-full text-left px-3 py-2 rounded-lg border text-xs font-semibold flex items-center justify-between transition hover:border-rose-400"
+                      style={{
+                        backgroundColor: isDark ? '#111828' : '#ffffff',
+                        borderColor: 'rgba(239, 68, 68, 0.35)'
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <span>25% Sitewide Discount + $52 CPM</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-rose-400">Margin Trap</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applyPreset('smart_offer')}
+                      className="w-full text-left px-3 py-2 rounded-lg border text-xs font-semibold flex items-center justify-between transition hover:border-emerald-400"
+                      style={{
+                        backgroundColor: isDark ? '#111828' : '#ffffff',
+                        borderColor: 'rgba(16, 185, 129, 0.35)'
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>CVR 3.10% + Bundle AOV (+$8)</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-emerald-400">Profit Lift</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => applyPreset('cpm_spike')}
+                      className="w-full text-left px-3 py-2 rounded-lg border text-xs font-semibold flex items-center justify-between transition hover:border-amber-400"
+                      style={{
+                        backgroundColor: isDark ? '#111828' : '#ffffff',
+                        borderColor: 'rgba(245, 158, 11, 0.35)'
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Activity className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Ad Auction CPM Spike ($32 → $65)</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-amber-400">Stress Test</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* ===================================================================== */}
+        {/* TAB 2: LEVER RANKING (SENSITIVITY ANALYSIS)                           */}
+        {/* ===================================================================== */}
+        {activeTab === 'ranking' && (
+          <section className="space-y-5">
+            <div
+              className="rounded-2xl p-5 sm:p-6 border shadow-lg"
+              style={{
+                backgroundColor: isDark ? '#111828' : '#ffffff',
+                borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#e2e8f0'
+              }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-700/30">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#00aaff]">
+                    SENSITIVITY ANALYSIS (+10% IMPROVEMENT PER LEVER)
+                  </span>
+                  <h2 className="text-xl font-extrabold mt-0.5">
+                    Which Lever Moves The Needle Most?
+                  </h2>
+                  <p className="text-xs opacity-70 mt-1">
+                    Each bar shows the exact bottom-line Net Profit increase generated by a 10%
+                    favorable improvement in that single lever while holding everything else constant.
+                  </p>
+                </div>
+
+                <div
+                  className="px-4 py-2.5 rounded-xl border"
+                  style={{
+                    backgroundColor: isDark ? '#032030' : '#f0f9ff',
+                    borderColor: '#00aaff'
+                  }}
+                >
+                  <div className="text-[10px] uppercase font-bold text-[#00aaff]">
+                    #1 Highest Leverage Point
+                  </div>
+                  <div className="text-sm font-extrabold mt-0.5">{topLever.name}</div>
+                  <div className="text-xs font-mono text-emerald-400 font-bold">
+                    +{fmtCurrency(topLever.profitGain)} Net Profit (+
+                    {((topLever.profitGain / Math.max(1, baseMetrics.netProfit)) * 100).toFixed(0)}
+                    %)
+                  </div>
+                </div>
+              </div>
+
+              {/* Ranked Horizontal Bar Chart */}
+              <div className="mt-6 space-y-3">
+                {leverRankings.map((item, idx) => {
+                  const maxGain = leverRankings[0].profitGain || 1;
+                  const pctWidth = Math.max(3, (item.profitGain / maxGain) * 100);
+                  const isTop = idx === 0;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3.5 rounded-xl border transition"
+                      style={{
+                        backgroundColor: isDark ? '#032030' : '#f8fafc',
+                        borderColor: isTop
+                          ? '#00aaff'
+                          : isDark
+                          ? 'rgba(0, 170, 255, 0.15)'
+                          : '#e2e8f0'
+                      }}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className="w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center font-mono"
+                            style={{
+                              backgroundColor: isTop ? '#00aaff' : isDark ? '#111828' : '#e2e8f0',
+                              color: isTop ? '#FFFFFF' : undefined
+                            }}
+                          >
+                            {idx + 1}
+                          </span>
+                          <span className="text-xs sm:text-sm font-bold">{item.name}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-[#00aaff]/15 text-[#00aaff] font-semibold">
+                            {item.category}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-4 font-mono text-xs sm:text-sm">
+                          <span className="opacity-70 hidden sm:inline">
+                            New Net Profit: {fmtCurrency(item.newProfit)}
+                          </span>
+                          <span className="font-extrabold text-emerald-400">
+                            +{fmtCurrency(item.profitGain)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="w-full h-2.5 rounded-full overflow-hidden bg-black/30">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${pctWidth}%`,
+                            background: isTop
+                              ? 'linear-gradient(90deg, #00aaff 0%, #10b981 100%)'
+                              : '#00aaff'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
+          </section>
+        )}
 
-            {/* 2. MAIN SIMULATOR GRID */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* ===================================================================== */}
+        {/* TAB 3: KPIs SCORECARD (P&L & UNIT ECONOMICS COMPARISON)               */}
+        {/* ===================================================================== */}
+        {activeTab === 'scorecard' && (
+          <section
+            className="rounded-2xl p-5 sm:p-6 border shadow-lg"
+            style={{
+              backgroundColor: isDark ? '#111828' : '#ffffff',
+              borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#e2e8f0'
+            }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-700/30">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-[#00aaff]">
+                  EXECUTIVE FINANCIAL SCORECARD
+                </span>
+                <h2 className="text-xl font-extrabold mt-0.5">
+                  Baseline vs. Simulated P&amp;L and Unit Economics
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('sliders')}
+                className="px-3.5 py-2 rounded-lg text-xs font-bold text-white"
+                style={{ backgroundColor: '#00aaff' }}
+              >
+                Adjust Scenario Sliders
+              </button>
+            </div>
 
-              {/* LEFT / TOP CONTROL PANELS (7 COLS) */}
-              <div className="lg:col-span-7 space-y-6">
+            <div className="overflow-x-auto mt-4">
+              <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                <thead>
+                  <tr
+                    className="border-b text-[11px] uppercase tracking-wider"
+                    style={{
+                      borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#cbd5e1',
+                      color: '#00aaff'
+                    }}
+                  >
+                    <th className="py-3 px-3">Financial / Growth Metric</th>
+                    <th className="py-3 px-3 text-right">Baseline ({baseline.periodLabel})</th>
+                    <th className="py-3 px-3 text-right">Simulated Scenario</th>
+                    <th className="py-3 px-3 text-right">Variance ($)</th>
+                    <th className="py-3 px-3 text-right">Variance (%)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-700/25 font-mono">
+                  {[
+                    {
+                      label: 'Total Gross Sales',
+                      base: baseMetrics.totalGrossSales,
+                      curr: currentMetrics.totalGrossSales,
+                      type: 'currency'
+                    },
+                    {
+                      label: 'Total Discounts Given',
+                      base: baseMetrics.totalDiscounts,
+                      curr: currentMetrics.totalDiscounts,
+                      type: 'currency',
+                      inverse: true
+                    },
+                    {
+                      label: 'Shipping Collected',
+                      base: baseMetrics.totalShipping,
+                      curr: currentMetrics.totalShipping,
+                      type: 'currency'
+                    },
+                    {
+                      label: 'Refunds & Returns',
+                      base: baseMetrics.totalRefunds,
+                      curr: currentMetrics.totalRefunds,
+                      type: 'currency',
+                      inverse: true
+                    },
+                    {
+                      label: 'NET REVENUE (TOP LINE)',
+                      base: baseMetrics.netRevenue,
+                      curr: currentMetrics.netRevenue,
+                      type: 'currency',
+                      bold: true
+                    },
+                    {
+                      label: 'Cost of Goods Sold (COGS)',
+                      base: baseMetrics.totalCogs,
+                      curr: currentMetrics.totalCogs,
+                      type: 'currency',
+                      inverse: true
+                    },
+                    {
+                      label: 'Carrier & Fulfillment Costs',
+                      base: baseMetrics.totalFulfillment,
+                      curr: currentMetrics.totalFulfillment,
+                      type: 'currency',
+                      inverse: true
+                    },
+                    {
+                      label: 'Payment Processing Fees',
+                      base: baseMetrics.totalPaymentFees,
+                      curr: currentMetrics.totalPaymentFees,
+                      type: 'currency',
+                      inverse: true
+                    },
+                    {
+                      label: 'Gross Profit',
+                      base: baseMetrics.grossProfit,
+                      curr: currentMetrics.grossProfit,
+                      type: 'currency',
+                      bold: true
+                    },
+                    {
+                      label: 'Paid Acquisition Ad Spend',
+                      base: baseMetrics.adSpend,
+                      curr: currentMetrics.adSpend,
+                      type: 'currency'
+                    },
+                    {
+                      label: 'CONTRIBUTION MARGIN',
+                      base: baseMetrics.contribution,
+                      curr: currentMetrics.contribution,
+                      type: 'currency',
+                      bold: true
+                    },
+                    {
+                      label: 'Fixed Monthly OPEX',
+                      base: baseMetrics.fixedOpex,
+                      curr: currentMetrics.fixedOpex,
+                      type: 'currency'
+                    },
+                    {
+                      label: 'NET PROFIT (BOTTOM LINE)',
+                      base: baseMetrics.netProfit,
+                      curr: currentMetrics.netProfit,
+                      type: 'currency',
+                      bold: true,
+                      highlight: true
+                    },
+                    {
+                      label: 'New Customer Acquisition Cost (nCAC)',
+                      base: baseMetrics.nCac,
+                      curr: currentMetrics.nCac,
+                      type: 'currency2',
+                      inverse: true
+                    },
+                    {
+                      label: '1st-Order MER',
+                      base: baseMetrics.firstOrderMer,
+                      curr: currentMetrics.firstOrderMer,
+                      type: 'ratio'
+                    },
+                    {
+                      label: 'Blended MER (Total Rev / Ad Spend)',
+                      base: baseMetrics.blendedMer,
+                      curr: currentMetrics.blendedMer,
+                      type: 'ratio'
+                    },
+                    {
+                      label: 'LTV:CAC Ratio',
+                      base: baseMetrics.ltvCac,
+                      curr: currentMetrics.ltvCac,
+                      type: 'ratio'
+                    }
+                  ].map((row) => {
+                    const diff = row.curr - row.base;
+                    const pctDiff = row.base !== 0 ? (diff / Math.abs(row.base)) * 100 : 0;
+                    const isGood = row.inverse ? diff < -0.01 : diff > 0.01;
+                    const isBad = row.inverse ? diff > 0.01 : diff < -0.01;
 
-                {/* SECTION A: BASELINE BUSINESS METRICS */}
-                <div className="bg-[#111827] border border-gray-800 rounded-2xl p-5 shadow-lg">
-                  <div className="flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-950/80 border border-indigo-800 flex items-center justify-center text-indigo-400">
-                        <DollarSign className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-white">1. الأداء الطبيعي (Baseline Metrics)</h3>
-                        <p className="text-xs text-gray-400">أرقام متجرك قبل موسم التخفيضات</p>
-                      </div>
+                    const formatCell = (v) => {
+                      if (row.type === 'currency') return fmtCurrency(v);
+                      if (row.type === 'currency2') return fmtCurrency(v, 2);
+                      return fmtRatio(v);
+                    };
+
+                    return (
+                      <tr
+                        key={row.label}
+                        style={{
+                          backgroundColor: row.highlight
+                            ? isDark
+                              ? '#032030'
+                              : '#e0f2fe'
+                            : 'transparent'
+                        }}
+                      >
+                        <td
+                          className={`py-3 px-3 font-sans ${
+                            row.bold ? 'font-extrabold' : 'font-medium'
+                          }`}
+                        >
+                          {row.label}
+                        </td>
+                        <td className="py-3 px-3 text-right opacity-80">
+                          {formatCell(row.base)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-bold">
+                          {formatCell(row.curr)}
+                        </td>
+                        <td
+                          className="py-3 px-3 text-right font-bold"
+                          style={{
+                            color: isGood ? '#10b981' : isBad ? '#ef4444' : undefined
+                          }}
+                        >
+                          {Math.abs(diff) < 0.005
+                            ? '—'
+                            : `${diff > 0 ? '+' : ''}${formatCell(diff)}`}
+                        </td>
+                        <td
+                          className="py-3 px-3 text-right"
+                          style={{
+                            color: isGood ? '#10b981' : isBad ? '#ef4444' : undefined
+                          }}
+                        >
+                          {Math.abs(pctDiff) < 0.05
+                            ? '0.0%'
+                            : `${pctDiff > 0 ? '+' : ''}${pctDiff.toFixed(1)}%`}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* ===================================================================== */}
+        {/* TAB 4: 12-MONTH COHORT & CASH FLOW FORECAST                           */}
+        {/* ===================================================================== */}
+        {activeTab === 'forecast' && (
+          <section className="space-y-5">
+            <div
+              className="rounded-2xl p-5 sm:p-6 border shadow-lg"
+              style={{
+                backgroundColor: isDark ? '#111828' : '#ffffff',
+                borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#e2e8f0'
+              }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-700/30">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#00aaff]">
+                    12-MONTH RUN-RATE &amp; COHORT COMPOUNDING
+                  </span>
+                  <h2 className="text-xl font-extrabold mt-0.5">
+                    Annualized Cash Flow &amp; Profit Trajectory
+                  </h2>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div
+                    className="px-4 py-2 rounded-xl border"
+                    style={{
+                      backgroundColor: isDark ? '#032030' : '#f8fafc',
+                      borderColor: 'rgba(0, 170, 255, 0.3)'
+                    }}
+                  >
+                    <div className="text-[10px] uppercase opacity-70 font-bold">
+                      12-Mo Cumulative Net Profit
+                    </div>
+                    <div
+                      className="text-lg font-extrabold font-mono"
+                      style={{
+                        color:
+                          forecastMonths[11].cumulativeProfit >= 0 ? '#10b981' : '#ef4444'
+                      }}
+                    >
+                      {fmtCurrency(forecastMonths[11].cumulativeProfit)}
                     </div>
                   </div>
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-medium text-gray-300 block mb-1">المبيعات الشهرية الحالية ($)</label>
+              {/* Visual Bar Chart of Monthly Net Profit */}
+              <div className="mt-6 grid grid-cols-12 gap-2 items-end h-48 pt-6 px-2 border-b border-slate-700/30">
+                {forecastMonths.map((m) => {
+                  const maxAbsProfit = Math.max(
+                    ...forecastMonths.map((x) => Math.abs(x.netProfit)),
+                    10000
+                  );
+                  const heightPct = Math.max(
+                    10,
+                    Math.min(100, (Math.abs(m.netProfit) / maxAbsProfit) * 100)
+                  );
+                  const isPos = m.netProfit >= 0;
+
+                  return (
+                    <div
+                      key={m.month}
+                      className="flex flex-col items-center justify-end h-full group"
+                    >
+                      <span className="text-[10px] font-mono mb-1 opacity-80 group-hover:opacity-100">
+                        {fmtCurrency(m.netProfit / 1000, 0)}k
+                      </span>
+                      <div
+                        className="w-full max-w-[36px] rounded-t-lg transition-all duration-300"
+                        style={{
+                          height: `${heightPct}%`,
+                          backgroundColor: isPos ? '#00aaff' : '#ef4444'
+                        }}
+                      />
+                      <span className="text-[10px] font-mono opacity-65 mt-2">
+                        M{m.month.replace('Month ', '')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Monthly Table */}
+              <div className="overflow-x-auto mt-6">
+                <table className="w-full text-left border-collapse text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-slate-700/30 text-[#00aaff] uppercase">
+                      <th className="py-2.5 px-3">Period</th>
+                      <th className="py-2.5 px-3 text-right">New Cust.</th>
+                      <th className="py-2.5 px-3 text-right">Repeat Orders</th>
+                      <th className="py-2.5 px-3 text-right">Net Revenue</th>
+                      <th className="py-2.5 px-3 text-right">Ad Spend</th>
+                      <th className="py-2.5 px-3 text-right">Monthly Net Profit</th>
+                      <th className="py-2.5 px-3 text-right">Cumulative Profit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/20">
+                    {forecastMonths.map((m) => (
+                      <tr key={m.month}>
+                        <td className="py-2.5 px-3 font-sans font-semibold">{m.month}</td>
+                        <td className="py-2.5 px-3 text-right">{fmtNumber(m.newCust)}</td>
+                        <td className="py-2.5 px-3 text-right">{fmtNumber(m.retOrders)}</td>
+                        <td className="py-2.5 px-3 text-right">{fmtCurrency(m.netRevenue)}</td>
+                        <td className="py-2.5 px-3 text-right">{fmtCurrency(m.adSpend)}</td>
+                        <td
+                          className="py-2.5 px-3 text-right font-bold"
+                          style={{ color: m.netProfit >= 0 ? '#10b981' : '#ef4444' }}
+                        >
+                          {fmtCurrency(m.netProfit)}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-right font-extrabold"
+                          style={{
+                            color: m.cumulativeProfit >= 0 ? '#00aaff' : '#ef4444'
+                          }}
+                        >
+                          {fmtCurrency(m.cumulativeProfit)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ===================================================================== */}
+        {/* TAB 5: HOW TO EDIT / BASELINE GROWTH DATA EDITOR                      */}
+        {/* ===================================================================== */}
+        {activeTab === 'edit' && (
+          <section className="space-y-5">
+            <div
+              className="rounded-2xl p-5 sm:p-6 border shadow-lg space-y-6"
+              style={{
+                backgroundColor: isDark ? '#111828' : '#ffffff',
+                borderColor: isDark ? 'rgba(0, 170, 255, 0.25)' : '#e2e8f0'
+              }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-700/30">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#00aaff]">
+                    1. ENTER GROWTH DATA (STANDARD BENCHMARK CONFIGURATION)
+                  </span>
+                  <h2 className="text-xl font-extrabold mt-0.5">
+                    Customize Your Store&apos;s Standard Benchmarks
+                  </h2>
+                  <p className="text-xs opacity-70 mt-1">
+                    Set your store&apos;s standard baseline numbers below. Every slider will anchor
+                    its default cursor at your standard benchmark while letting you slide from 0 up
+                    to the max.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBaseline(DEFAULT_BASELINE);
+                      setScenario(buildInitialScenario(DEFAULT_BASELINE));
+                    }}
+                    className="px-3.5 py-2 rounded-lg text-xs font-semibold border transition hover:border-[#00aaff]"
+                    style={{
+                      backgroundColor: isDark ? '#032030' : '#f8fafc',
+                      borderColor: 'rgba(0, 170, 255, 0.3)'
+                    }}
+                  >
+                    Restore Standard Defaults
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScenario(buildInitialScenario(baseline));
+                      setActiveTab('sliders');
+                    }}
+                    className="px-4 py-2 rounded-lg text-xs font-bold text-white shadow"
+                    style={{ backgroundColor: '#00aaff' }}
+                  >
+                    Apply &amp; Open Simulator →
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {/* Group 1: Acquisition Inputs */}
+                <div
+                  className="p-4 rounded-xl border space-y-3"
+                  style={{
+                    backgroundColor: isDark ? '#032030' : '#f8fafc',
+                    borderColor: 'rgba(0, 170, 255, 0.22)'
+                  }}
+                >
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#00aaff]">
+                    Acquisition &amp; Funnel Standards
+                  </h3>
+
+                  {[
+                    { key: 'newCustomers', label: 'New Customers (Orders)', step: '10' },
+                    { key: 'cpm', label: 'CPM ($ per 1k Impressions)', step: '0.5' },
+                    { key: 'ctr', label: 'CTR (%)', step: '0.05' },
+                    { key: 'cvr', label: 'Conversion Rate CVR (%)', step: '0.05' },
+                    { key: 'newUnitsPerOrder', label: 'New Units per Order', step: '0.1' },
+                    { key: 'newAvgRetailPrice', label: 'New Avg Retail Price ($)', step: '0.5' },
+                    { key: 'newDiscountRate', label: 'New Discount Rate (%)', step: '0.5' },
+                    { key: 'newShippingPerOrder', label: 'New Shipping Collected ($)', step: '0.1' },
+                    { key: 'newRefundRate', label: 'New Refund Rate (%)', step: '0.1' }
+                  ].map((field) => (
+                    <div key={field.key}>
+                      <label className="block text-[11px] font-semibold opacity-80 mb-1">
+                        {field.label}
+                      </label>
                       <input
                         type="number"
-                        value={baseline.monthlyRevenue}
-                        onChange={(e) => setBaseline({ ...baseline, monthlyRevenue: Number(e.target.value) })}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        step={field.step}
+                        value={baseline[field.key]}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const nextBase = { ...baseline, [field.key]: val };
+                          setBaseline(nextBase);
+                          setScenario(buildInitialScenario(nextBase));
+                        }}
+                        className="w-full px-3 py-1.5 rounded-lg border text-xs font-mono focus:outline-none focus:border-[#00aaff]"
+                        style={{
+                          backgroundColor: isDark ? '#111828' : '#ffffff',
+                          borderColor: isDark ? '#1e293b' : '#cbd5e1'
+                        }}
                       />
                     </div>
+                  ))}
+                </div>
 
-                    <div>
-                      <label className="text-xs font-medium text-gray-300 block mb-1">متوسط قيمة الطلب - AOV ($)</label>
+                {/* Group 2: Retention Inputs */}
+                <div
+                  className="p-4 rounded-xl border space-y-3"
+                  style={{
+                    backgroundColor: isDark ? '#032030' : '#f8fafc',
+                    borderColor: 'rgba(0, 170, 255, 0.22)'
+                  }}
+                >
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#00aaff]">
+                    Retention &amp; Repeat Standards
+                  </h3>
+
+                  {[
+                    { key: 'returningOrders', label: 'Returning Orders', step: '10' },
+                    { key: 'retUnitsPerOrder', label: 'Returning Units per Order', step: '0.1' },
+                    { key: 'retAvgRetailPrice', label: 'Returning Avg Retail Price ($)', step: '0.5' },
+                    { key: 'retDiscountRate', label: 'Returning Discount Rate (%)', step: '0.5' },
+                    { key: 'retShippingPerOrder', label: 'Returning Shipping Collected ($)', step: '0.1' },
+                    { key: 'retRefundRate', label: 'Returning Refund Rate (%)', step: '0.1' }
+                  ].map((field) => (
+                    <div key={field.key}>
+                      <label className="block text-[11px] font-semibold opacity-80 mb-1">
+                        {field.label}
+                      </label>
                       <input
                         type="number"
-                        value={baseline.aov}
-                        onChange={(e) => setBaseline({ ...baseline, aov: Number(e.target.value) })}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        step={field.step}
+                        value={baseline[field.key]}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const nextBase = { ...baseline, [field.key]: val };
+                          setBaseline(nextBase);
+                          setScenario(buildInitialScenario(nextBase));
+                        }}
+                        className="w-full px-3 py-1.5 rounded-lg border text-xs font-mono focus:outline-none focus:border-[#00aaff]"
+                        style={{
+                          backgroundColor: isDark ? '#111828' : '#ffffff',
+                          borderColor: isDark ? '#1e293b' : '#cbd5e1'
+                        }}
                       />
                     </div>
+                  ))}
+                </div>
 
-                    <div>
-                      <label className="text-xs font-medium text-gray-300 block mb-1">ميزانية الإعلانات الشهرية ($)</label>
+                {/* Group 3: Operations & Fixed Overhead */}
+                <div
+                  className="p-4 rounded-xl border space-y-3"
+                  style={{
+                    backgroundColor: isDark ? '#032030' : '#f8fafc',
+                    borderColor: 'rgba(0, 170, 255, 0.22)'
+                  }}
+                >
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#00aaff]">
+                    Operations &amp; Fixed Overhead
+                  </h3>
+
+                  {[
+                    { key: 'unitCogs', label: 'Unit COGS ($ per Unit)', step: '0.25' },
+                    { key: 'fulfillmentPerOrder', label: 'Carrier & Fulfillment ($ per Order)', step: '0.25' },
+                    { key: 'paymentFeeRate', label: 'Payment Processing Fee (%)', step: '0.1' },
+                    { key: 'fixedOpex', label: 'Monthly Fixed OPEX ($)', step: '1000' }
+                  ].map((field) => (
+                    <div key={field.key}>
+                      <label className="block text-[11px] font-semibold opacity-80 mb-1">
+                        {field.label}
+                      </label>
                       <input
                         type="number"
-                        value={baseline.adSpend}
-                        onChange={(e) => setBaseline({ ...baseline, adSpend: Number(e.target.value)
+                        step={field.step}
+                        value={baseline[field.key]}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const nextBase = { ...baseline, [field.key]: val };
+                          setBaseline(nextBase);
+                          setScenario(buildInitialScenario(nextBase));
+                        }}
+                        className="w-full px-3 py-1.5 rounded-lg border text-xs font-mono focus:outline-none focus:border-[#00aaff]"
+                        style={{
+                          backgroundColor: isDark ? '#111828' : '#ffffff',
+                          borderColor: isDark ? '#1e293b' : '#cbd5e1'
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
+  );
+}
