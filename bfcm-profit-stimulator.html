@@ -1,0 +1,458 @@
+import React, { useState, useMemo } from 'react';
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  AlertTriangle, 
+  CheckCircle2, 
+  DollarSign, 
+  ShoppingCart, 
+  Users, 
+  Percent, 
+  BarChart3, 
+  PieChart, 
+  RefreshCw, 
+  Download, 
+  Info, 
+  Sparkles, 
+  HelpCircle,
+  ChevronRight,
+  Layers,
+  ArrowUpRight,
+  ArrowDownRight
+} from 'lucide-react';
+
+export default function App() {
+  // ---------------------------------------------------------------------------
+  // BASELINE STATE
+  // ---------------------------------------------------------------------------
+  const [baseline, setBaseline] = useState({
+    monthlyRevenue: 100000,     // $ Gross Sales
+    aov: 80,                    // $ Average Order Value
+    adSpend: 25000,             // $ Ad Spend
+    cogsPct: 30,                // % Cost of Goods Sold
+    fulfillmentPct: 10,         // % Shipping & Handling
+    cpm: 15,                    // $ Cost Per Mille
+    ctr: 1.5,                   // % Click Through Rate
+    cvr: 2.5,                   // % Conversion Rate
+    repeatRatePct: 25,          // % Repeat Customer Contribution
+  });
+
+  // ---------------------------------------------------------------------------
+  // SIMULATION SCENARIO LEVERS (SLIDERS)
+  // ---------------------------------------------------------------------------
+  const [scenarios, setScenarios] = useState({
+    adSpendIncreasePct: 50,      // % Increase in Ad Budget
+    cpmSurgePct: 20,             // % CPM Inflation during Black Friday
+    ctrChangePct: 10,            // % CTR Improvement/Decline
+    cvrChangePct: 25,            // % CVR Increase due to massive offer
+    repeatUpliftPct: 30,         // % Increase in Repeat Buyer Traffic
+    fulfillmentSurgePct: 15,     // % Extra Shipping/Fuel Surcharges
+    discountNewPct: 25,          // % Discount for New Customers
+    discountRepeatPct: 20,       // % Discount for Repeat Customers
+  });
+
+  // Active Tab
+  const [activeTab, setActiveTab] = useState('simulator'); // 'simulator' | 'abc_strategy' | 'report'
+
+  // Presets
+  const applyPreset = (type) => {
+    if (type === 'conservative') {
+      setScenarios({
+        adSpendIncreasePct: 25,
+        cpmSurgePct: 15,
+        ctrChangePct: 5,
+        cvrChangePct: 15,
+        repeatUpliftPct: 20,
+        fulfillmentSurgePct: 10,
+        discountNewPct: 15,
+        discountRepeatPct: 10,
+      });
+    } else if (type === 'aggressive') {
+      setScenarios({
+        adSpendIncreasePct: 100,
+        cpmSurgePct: 40,
+        ctrChangePct: 20,
+        cvrChangePct: 50,
+        repeatUpliftPct: 60,
+        fulfillmentSurgePct: 25,
+        discountNewPct: 35,
+        discountRepeatPct: 30,
+      });
+    } else if (type === 'danger_zone') {
+      setScenarios({
+        adSpendIncreasePct: 150,
+        cpmSurgePct: 60,
+        ctrChangePct: 0,
+        cvrChangePct: 20,
+        repeatUpliftPct: 15,
+        fulfillmentSurgePct: 30,
+        discountNewPct: 45,
+        discountRepeatPct: 40,
+      });
+    }
+  };
+
+  const handleReset = () => {
+    setBaseline({
+      monthlyRevenue: 100000,
+      aov: 80,
+      adSpend: 25000,
+      cogsPct: 30,
+      fulfillmentPct: 10,
+      cpm: 15,
+      ctr: 1.5,
+      cvr: 2.5,
+      repeatRatePct: 25,
+    });
+    setScenarios({
+      adSpendIncreasePct: 50,
+      cpmSurgePct: 20,
+      ctrChangePct: 10,
+      cvrChangePct: 25,
+      repeatUpliftPct: 30,
+      fulfillmentSurgePct: 15,
+      discountNewPct: 25,
+      discountRepeatPct: 20,
+    });
+  };
+
+  // ---------------------------------------------------------------------------
+  // REAL-TIME ENGINE CALCULATIONS
+  // ---------------------------------------------------------------------------
+  const metrics = useMemo(() => {
+    // 1. BASELINE CALCULATIONS
+    const baseTotalOrders = baseline.monthlyRevenue / (baseline.aov || 1);
+    const baseRepeatOrders = baseTotalOrders * (baseline.repeatRatePct / 100);
+    const baseNewOrders = baseTotalOrders - baseRepeatOrders;
+    
+    const baseGrossRev = baseline.monthlyRevenue;
+    const baseDiscounts = 0; // Baseline assumes regular pricing
+    const baseNetRev = baseGrossRev - baseDiscounts;
+    
+    const baseCOGS = baseNetRev * (baseline.cogsPct / 100);
+    const baseFulfillment = baseNetRev * (baseline.fulfillmentPct / 100);
+    const baseAdSpend = baseline.adSpend;
+    
+    const baseTotalCosts = baseCOGS + baseFulfillment + baseAdSpend;
+    const baseNetProfit = baseNetRev - baseTotalCosts;
+    const baseProfitMargin = baseNetRev > 0 ? (baseNetProfit / baseNetRev) * 100 : 0;
+    const baseROAS = baseAdSpend > 0 ? baseNetRev / baseAdSpend : 0;
+    const baseNCAC = baseNewOrders > 0 ? baseAdSpend / baseNewOrders : 0;
+
+    // 2. SIMULATED SCENARIO CALCULATIONS
+    // Ad Budget & Inflation
+    const simAdSpend = baseAdSpend * (1 + scenarios.adSpendIncreasePct / 100);
+    const simCPM = baseline.cpm * (1 + scenarios.cpmSurgePct / 100);
+    
+    // Traffic Efficiency
+    const baseImpressions = baseAdSpend > 0 ? (baseAdSpend / baseline.cpm) * 1000 : 0;
+    const simImpressions = simAdSpend > 0 ? (simAdSpend / simCPM) * 1000 : 0;
+
+    const simCTR = baseline.ctr * (1 + scenarios.ctrChangePct / 100);
+    const simCVR = baseline.cvr * (1 + scenarios.cvrChangePct / 100);
+
+    const baseClicks = baseImpressions * (baseline.ctr / 100);
+    const simClicks = simImpressions * (simCTR / 100);
+
+    // Orders Generated
+    const simNewOrders = simClicks * (simCVR / 100);
+    const simRepeatOrders = baseRepeatOrders * (1 + scenarios.repeatUpliftPct / 100);
+    const simTotalOrders = simNewOrders + simRepeatOrders;
+
+    // Revenue Breakdown with Discounts
+    const newOrderFullVal = simNewOrders * baseline.aov;
+    const repeatOrderFullVal = simRepeatOrders * baseline.aov;
+    
+    const newDiscountAmount = newOrderFullVal * (scenarios.discountNewPct / 100);
+    const repeatDiscountAmount = repeatOrderFullVal * (scenarios.discountRepeatPct / 100);
+    const simTotalDiscounts = newDiscountAmount + repeatDiscountAmount;
+
+    const simGrossRev = (simTotalOrders * baseline.aov);
+    const simNetRev = simGrossRev - simTotalDiscounts;
+    const simBlendedAOV = simTotalOrders > 0 ? simNetRev / simTotalOrders : 0;
+
+    // Cost Breakdown
+    const simCOGS = (simGrossRev * (baseline.cogsPct / 100)); // COGS on product value
+    const simFulfillmentRate = (baseline.fulfillmentPct / 100) * (1 + scenarios.fulfillmentSurgePct / 100);
+    const simFulfillment = simNetRev * simFulfillmentRate;
+
+    const simTotalCosts = simCOGS + simFulfillment + simAdSpend;
+    const simNetProfit = simNetRev - simTotalCosts;
+    const simProfitMargin = simNetRev > 0 ? (simNetProfit / simNetRev) * 100 : 0;
+    const simROAS = simAdSpend > 0 ? simNetRev / simAdSpend : 0;
+    const simNCAC = simNewOrders > 0 ? simAdSpend / simNewOrders : 0;
+
+    // Comparisons
+    const profitDiff = simNetProfit - baseNetProfit;
+    const profitDiffPct = baseNetProfit !== 0 ? (profitDiff / Math.abs(baseNetProfit)) * 100 : 0;
+    const revDiff = simNetRev - baseNetRev;
+    const revDiffPct = baseNetRev > 0 ? (revDiff / baseNetRev) * 100 : 0;
+
+    return {
+      base: {
+        totalOrders: baseTotalOrders,
+        newOrders: baseNewOrders,
+        repeatOrders: baseRepeatOrders,
+        grossRev: baseGrossRev,
+        discounts: baseDiscounts,
+        netRev: baseNetRev,
+        cogs: baseCOGS,
+        fulfillment: baseFulfillment,
+        adSpend: baseAdSpend,
+        totalCosts: baseTotalCosts,
+        netProfit: baseNetProfit,
+        profitMargin: baseProfitMargin,
+        roas: baseROAS,
+        ncac: baseNCAC,
+      },
+      sim: {
+        totalOrders: simTotalOrders,
+        newOrders: simNewOrders,
+        repeatOrders: simRepeatOrders,
+        grossRev: simGrossRev,
+        discounts: simTotalDiscounts,
+        netRev: simNetRev,
+        cogs: simCOGS,
+        fulfillment: simFulfillment,
+        adSpend: simAdSpend,
+        totalCosts: simTotalCosts,
+        netProfit: simNetProfit,
+        profitMargin: simProfitMargin,
+        roas: simROAS,
+        ncac: simNCAC,
+        blendedAov: simBlendedAOV,
+      },
+      diff: {
+        profit: profitDiff,
+        profitPct: profitDiffPct,
+        rev: revDiff,
+        revPct: revDiffPct,
+        isProfitable: profitDiff >= 0,
+      }
+    };
+  }, [baseline, scenarios]);
+
+  const formatCurrency = (val) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
+  };
+
+  const formatNum = (val) => {
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(val);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0b0f19] text-gray-100 font-sans dir-rtl text-right selection:bg-indigo-600 selection:text-white" dir="rtl">
+      
+      {/* --------------------------------------------------------------------------- */}
+      {/* HEADER BAR */}
+      {/* --------------------------------------------------------------------------- */}
+      <header className="border-b border-gray-800 bg-[#111827]/80 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
+          
+          {/* Brand Logo & Title */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
+              <Sparkles className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold tracking-wider text-indigo-400 uppercase bg-indigo-950/60 border border-indigo-800/50 px-2 py-0.5 rounded">
+                  Grow My Business
+                </span>
+                <span className="text-xs text-gray-400">| D2C & Ecommerce Suite</span>
+              </div>
+              <h1 className="text-lg font-bold text-white flex items-center gap-2">
+                محاكي أرباح وتخفيضات البلاك فرايدي (BFCM Impact Simulator)
+              </h1>
+            </div>
+          </div>
+
+          {/* Preset Options & Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-gray-400 ml-1 hidden lg:inline">سيناريوهات جاهزة:</span>
+            <button
+              onClick={() => applyPreset('conservative')}
+              className="text-xs px-3 py-1.5 rounded-lg bg-gray-800/80 hover:bg-gray-700 text-gray-200 border border-gray-700 transition"
+            >
+              متوازن ⚖️
+            </button>
+            <button
+              onClick={() => applyPreset('aggressive')}
+              className="text-xs px-3 py-1.5 rounded-lg bg-indigo-900/40 hover:bg-indigo-800/60 text-indigo-200 border border-indigo-700/60 transition"
+            >
+              هجومي 🚀
+            </button>
+            <button
+              onClick={() => applyPreset('danger_zone')}
+              className="text-xs px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 transition"
+            >
+              مغامرة ⚠️
+            </button>
+
+            <button
+              onClick={handleReset}
+              className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition mr-2"
+              title="إعادة ضبط المدخلات"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-6 text-sm border-t border-gray-800/60 pt-2">
+          <button
+            onClick={() => setActiveTab('simulator')}
+            className={`pb-2.5 font-medium border-b-2 flex items-center gap-2 transition ${
+              activeTab === 'simulator' 
+                ? 'border-indigo-500 text-indigo-400' 
+                : 'border-transparent text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            محاكي الأرباح والتخفيضات
+          </button>
+          <button
+            onClick={() => setActiveTab('abc_strategy')}
+            className={`pb-2.5 font-medium border-b-2 flex items-center gap-2 transition ${
+              activeTab === 'abc_strategy' 
+                ? 'border-indigo-500 text-indigo-400' 
+                : 'border-transparent text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            استراتيجية سلم التخفيضات الذكي (ABC Catalog)
+          </button>
+        </div>
+      </header>
+
+      {/* --------------------------------------------------------------------------- */}
+      {/* MAIN CONTAINER */}
+      {/* --------------------------------------------------------------------------- */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        {activeTab === 'simulator' && (
+          <div className="space-y-6">
+
+            {/* 1. TOP ALERT SUMMARY BANNER */}
+            <div className={`rounded-2xl p-6 border backdrop-blur-xl transition-all shadow-xl ${
+              metrics.diff.isProfitable 
+                ? 'bg-emerald-950/20 border-emerald-500/40 shadow-emerald-950/20' 
+                : 'bg-rose-950/30 border-rose-500/50 shadow-rose-950/30'
+            }`}>
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                
+                <div className="flex items-start gap-4">
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-lg ${
+                    metrics.diff.isProfitable 
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse'
+                  }`}>
+                    {metrics.diff.isProfitable ? (
+                      <TrendingUp className="w-8 h-8" />
+                    ) : (
+                      <AlertTriangle className="w-8 h-8" />
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full uppercase ${
+                        metrics.diff.isProfitable 
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                      }`}>
+                        {metrics.diff.isProfitable ? 'استراتيجية مربحة ✅' : 'تحذير: نمو وهمي ووهم الخصومات ⚠️'}
+                      </span>
+                      <span className="text-xs text-gray-400">مقارنة بوضعك الطبيعي</span>
+                    </div>
+
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-1">
+                      {metrics.diff.isProfitable ? (
+                        <>زيادة صافية في الأرباح بقيمة <span className="text-emerald-400">{formatCurrency(metrics.diff.profit)}</span></>
+                      ) : (
+                        <>انخفاض صافي الأرباح بقيمة <span className="text-rose-400">{formatCurrency(Math.abs(metrics.diff.profit))}</span></>
+                      )}
+                    </h2>
+
+                    <p className="text-sm text-gray-300 mt-1 max-w-2xl leading-relaxed">
+                      {metrics.diff.isProfitable ? (
+                        `ممتاز! الخطة تحقق ارتفاعاً في الإيرادات بنسبة (${metrics.diff.revPct.toFixed(1)}%) وتترجم إلى نمو حقيقي في صافي أرباحك الصافية. حجم المبيعات الإضافي يعوض قيمة الخصم الممنوح.`
+                      ) : (
+                        `رغم ارتفاع المبيعات بنسبة (+${metrics.diff.revPct.toFixed(1)}%)، إلا أن الخصومات الكبيرة وتضخم تكلفة الإعلانات والتوصيل تلتهم هامش ربحك! أنت تبيع أكثر وتكسب أقل.`
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Key Numbers Box */}
+                <div className="flex items-center gap-4 bg-gray-950/60 p-4 rounded-xl border border-gray-800 shrink-0 w-full md:w-auto justify-around">
+                  <div className="text-center px-3">
+                    <span className="text-xs text-gray-400 block">صافي أرباح BFCM</span>
+                    <span className={`text-xl font-bold ${metrics.sim.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {formatCurrency(metrics.sim.netProfit)}
+                    </span>
+                    <span className="text-[10px] text-gray-500 block">هامش {metrics.sim.profitMargin.toFixed(1)}%</span>
+                  </div>
+                  
+                  <div className="h-8 w-px bg-gray-800"></div>
+
+                  <div className="text-center px-3">
+                    <span className="text-xs text-gray-400 block">تآكل الخصومات</span>
+                    <span className="text-xl font-bold text-amber-400">
+                      -{formatCurrency(metrics.sim.discounts)}
+                    </span>
+                    <span className="text-[10px] text-gray-500 block">خسارة من السعر الأصلي</span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* 2. MAIN SIMULATOR GRID */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+              {/* LEFT / TOP CONTROL PANELS (7 COLS) */}
+              <div className="lg:col-span-7 space-y-6">
+
+                {/* SECTION A: BASELINE BUSINESS METRICS */}
+                <div className="bg-[#111827] border border-gray-800 rounded-2xl p-5 shadow-lg">
+                  <div className="flex items-center justify-between mb-4 border-b border-gray-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-950/80 border border-indigo-800 flex items-center justify-center text-indigo-400">
+                        <DollarSign className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-white">1. الأداء الطبيعي (Baseline Metrics)</h3>
+                        <p className="text-xs text-gray-400">أرقام متجرك قبل موسم التخفيضات</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-medium text-gray-300 block mb-1">المبيعات الشهرية الحالية ($)</label>
+                      <input
+                        type="number"
+                        value={baseline.monthlyRevenue}
+                        onChange={(e) => setBaseline({ ...baseline, monthlyRevenue: Number(e.target.value) })}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium text-gray-300 block mb-1">متوسط قيمة الطلب - AOV ($)</label>
+                      <input
+                        type="number"
+                        value={baseline.aov}
+                        onChange={(e) => setBaseline({ ...baseline, aov: Number(e.target.value) })}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium text-gray-300 block mb-1">ميزانية الإعلانات الشهرية ($)</label>
+                      <input
+                        type="number"
+                        value={baseline.adSpend}
+                        onChange={(e) => setBaseline({ ...baseline, adSpend: Number(e.target.value)
